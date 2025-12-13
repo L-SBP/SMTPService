@@ -37,6 +37,11 @@ public class Account implements UserDetails {
     @Column(name = "is_admin")
     private Boolean isAdmin = false;
 
+    // --- 新增字段 ---
+    @Column(name = "enabled")
+    private Boolean enabled = true;
+    // ----------------
+
     public Boolean getIsAdmin() {
         return isAdmin;
     }
@@ -94,8 +99,10 @@ public class Account implements UserDetails {
         return true;
     }
 
+    // --- 修改此方法 ---
     @Override
     public boolean isEnabled() {
-        return true;
+        return enabled == null || enabled; // 默认为 true
     }
+    // ------------------
 }

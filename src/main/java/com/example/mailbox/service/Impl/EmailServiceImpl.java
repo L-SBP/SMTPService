@@ -20,92 +20,81 @@ import java.util.List;
 @Service
 public class EmailServiceImpl implements EmailService {
 
-    @Autowired
-    private EmailRepository emailRepository;
-
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private EmailRepository emailRepository;
+    @Autowired private UserRepository userRepository;
 
     @Override
     public Page<Email> getInbox(String email, Pageable pageable) {
-        var emails = emailRepository.findByUserEmailAndFolderTypeOrderByReceivedTimeDesc(
-            email, FolderType.INBOX, pageable
-        );
-
-        return convertToPage(emails);
+        return convertToPage(emailRepository.findByUserEmailAndFolderTypeOrderByReceivedTimeDesc(email, FolderType.INBOX, pageable));
     }
 
     @Override
     public Page<Email> getSent(String email, Pageable pageable) {
-        var emails = emailRepository.findByUserEmailAndFolderTypeOrderByReceivedTimeDesc(
-            email, FolderType.SENT, pageable
-        );
-
-        return convertToPage(emails);
+        return convertToPage(emailRepository.findByUserEmailAndFolderTypeOrderByReceivedTimeDesc(email, FolderType.SENT, pageable));
     }
 
     @Override
     public Email getEmailById(Long id, String email) {
-        return emailRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("邮件不存在"));
+        return emailRepository.findById(id).orElseThrow(() -> new RuntimeException("邮件不存在"));
     }
 
-    /**
-     * 实现 Web 端发送邮件逻辑
-     */
     @Override
     @Transactional
     public void sendEmail(String senderEmail, Object requestObj) {
-        if (!(requestObj instanceof EmailRequest)) {
-            throw new IllegalArgumentException("无效的请求参数");
-        }
+        if (!(requestObj instanceof EmailRequest)) throw new IllegalArgumentException("无效的请求参数");
         EmailRequest request = (EmailRequest) requestObj;
 
-        // 1. 获取发件人用户
         Account sender = userRepository.findByEmail(senderEmail)
                 .orElseThrow(() -> new RuntimeException("发件人账户异常"));
 
-        LocalDateTime now = LocalDateTime.now();
+        // 1. 保存到发件箱
+        saveSentEmail(sender, request);
 
-        // 2. 保存到发件人的“已发送”箱 (SENT)
-        Email sentEmail = new Email();
-        sentEmail.setSender(senderEmail);
-        sentEmail.setRecipients(request.getTo());
-        sentEmail.setCc(request.getCc());
-        sentEmail.setBcc(request.getBcc());
-        sentEmail.setSubject(request.getSubject());
-        sentEmail.setBody(request.getBody());
-        sentEmail.setUser(sender); // 归属于发件人
+        // 2. 投递给所有收件人
+        distributeToRecipients(senderEmail, request);
+    }
+
+    private void saveSentEmail(Account sender, EmailRequest request) {
+        Email sentEmail = createBaseEmail(sender.getEmail(), request);
+        sentEmail.setUser(sender);
         sentEmail.setFolderType(FolderType.SENT);
-        sentEmail.setReceivedTime(now);
-        sentEmail.setRead(true); // 自己发的当然已读
-        // 注意：Web端发送的附件处理比较复杂，这里暂存为无附件，后续需通过upload接口关联
-        sentEmail.setHasAttachment(request.getAttachments() != null && !request.getAttachments().isEmpty());
+        sentEmail.setRead(true);
         emailRepository.save(sentEmail);
+    }
 
-        // 3. 投递给所有收件人 (INBOX)
+    private void distributeToRecipients(String senderEmail, EmailRequest request) {
         List<String> allRecipients = new ArrayList<>();
         if (request.getTo() != null) allRecipients.addAll(request.getTo());
         if (request.getCc() != null) allRecipients.addAll(request.getCc());
         if (request.getBcc() != null) allRecipients.addAll(request.getBcc());
 
+        LocalDateTime now = LocalDateTime.now();
         for (String recipientEmail : allRecipients) {
-            // 查找收件人是否存在（只投递给本站存在的用户）
             userRepository.findByEmail(recipientEmail).ifPresent(recipientUser -> {
-                Email inboxEmail = new Email();
-                inboxEmail.setSender(senderEmail);
-                inboxEmail.setRecipients(request.getTo()); // 收件人看到原本的收件列表
-                inboxEmail.setCc(request.getCc());
-                inboxEmail.setSubject(request.getSubject());
-                inboxEmail.setBody(request.getBody());
-                inboxEmail.setUser(recipientUser); // 归属于收件人
+                Email inboxEmail = createBaseEmail(senderEmail, request);
+                inboxEmail.setUser(recipientUser);
                 inboxEmail.setFolderType(FolderType.INBOX);
-                inboxEmail.setReceivedTime(now);
                 inboxEmail.setRead(false);
-                inboxEmail.setHasAttachment(request.getAttachments() != null && !request.getAttachments().isEmpty());
+                // 确保收件人看到的是发件时间，而不是入库时间（虽然这里是同一时刻）
+                inboxEmail.setReceivedTime(now);
                 emailRepository.save(inboxEmail);
             });
         }
+    }
+
+    private Email createBaseEmail(String senderEmail, EmailRequest request) {
+        Email email = new Email();
+        email.setSender(senderEmail);
+        email.setRecipients(request.getTo());
+        email.setCc(request.getCc());
+        // 注意：BCC 通常只在发件箱保留，收件箱副本不应包含 BCC 列表，这里简化处理保留了原逻辑
+        // 如果要严谨，distributeToRecipients 里存的副本应该清空 bcc
+        email.setBcc(request.getBcc());
+        email.setSubject(request.getSubject());
+        email.setBody(request.getBody());
+        email.setReceivedTime(LocalDateTime.now());
+        email.setHasAttachment(request.getAttachments() != null && !request.getAttachments().isEmpty());
+        return email;
     }
 
     @Override

@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class AuthResponseVO {
+public class RegisterResponseVO {
     private String email;
     private Boolean Result;
 }

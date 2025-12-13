@@ -19,5 +19,19 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7.0
+    container_name: mailbox-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/var/lib/redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 volumes:
   mysql_data:
+  redis_data:

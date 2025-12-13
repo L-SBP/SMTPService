@@ -1,12 +1,12 @@
 package com.example.mailbox.service;
 
-import com.example.mailbox.dto.AuthRequestDTO;
 import com.example.mailbox.dto.RegisterRequestDTO;
 import com.example.mailbox.entity.Account;
-import com.example.mailbox.vo.AuthResponseVO;
+import com.example.mailbox.vo.LoginResponseVO;
+import com.example.mailbox.vo.RegisterResponseVO;
 
 public interface AuthService {
-    AuthResponseVO register(RegisterRequestDTO registerRequestDTO);
+    RegisterResponseVO register(RegisterRequestDTO registerRequestDTO);
 
-    Account login(String email, String password);
+    LoginResponseVO login(String email, String password);
 }

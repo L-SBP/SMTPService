@@ -5,6 +5,7 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 
 public interface UserService extends UserDetailsService {
     Account getUserByEmail(String email);
+    Account getUserById(Long id);
     Account save(Account user);
 
     // 修改密码接口

@@ -1,227 +1,337 @@
-# Android邮箱项目后端
+# Android邮箱项目 - 自定义SMTP/POP3服务器使用指南
 
-基于Spring Boot的邮箱服务后端，提供完整的用户认证、邮件管理、附件上传和群组管理功能。
+## 📋 目录
 
-## 技术栈
+- [项目概述](#项目概述)
+- [服务器配置](#服务器配置)
+- [如何使用自定义服务器](#如何使用自定义服务器)
+- [Android客户端集成](#android客户端集成)
+- [测试示例](#测试示例)
+- [常见问题](#常见问题)
 
-- **框架**: Spring Boot 3.x
-- **认证**: Spring Security + JWT
-- **数据访问**: Spring Data JPA
-- **数据库**: H2 (开发), MySQL (生产)
-- **缓存**: Redis (可选)
-- **构建工具**: Maven
+## 🎯 项目概述
 
-## 项目结构
+本项目实现了完全自定义的SMTP和POP3邮件服务器，支持JWT认证，用于Android邮箱应用的邮件收发功能。
 
+### 核心特性
+
+- ✅ **自定义SMTP服务器** (端口25)
+- ✅ **自定义POP3服务器** (端口110)
+- ✅ **JWT认证机制**
+- ✅ **Redis Token管理**
+- ✅ **Android客户端示例**
+
+## 🖥️ 服务器配置
+
+### 端口配置
+
+| 服务 | 端口 | 协议 | 认证方式 |
+|------|------|------|----------|
+| SMTP | 25 | SMTP | JWT |
+| POP3 | 110 | POP3 | JWT |
+
+### Redis配置
+
+```properties
+# application.properties
+spring.redis.host=127.0.0.1
+spring.redis.port=6379
+spring.redis.password=
+spring.redis.database=0
 ```
-src/main/java/com/example/mailbox/
-├── controller/          # REST API控制器
-│   ├── AuthController.java      # 用户认证接口
-│   ├── UserController.java      # 用户管理接口
-│   ├── EmailController.java     # 邮件管理接口
-│   ├── AttachmentController.java # 附件上传接口
-│   └── GroupController.java     # 群组管理接口
-├── service/             # 业务逻辑层
-│   ├── AuthService.java
-│   ├── UserService.java
-│   ├── EmailService.java
-│   ├── AttachmentService.java
-│   └── GroupService.java
-├── service/Impl/        # 业务逻辑实现
-├── repository/          # 数据访问层
-├── entity/              # 实体类
-├── dto/                 # 数据传输对象
-├── vo/                  # 视图对象
-├── config/              # 配置类
-├── filter/              # 过滤器
-├── util/                # 工具类
-└── exception/           # 异常处理
+
+### JWT配置
+
+```properties
+# application.properties
+jwt.secret=ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ123456
+jwt.expiration=86400000  # 24小时
 ```
 
-## API接口
+## 🚀 如何使用自定义服务器
 
-### 1. 用户认证接口 (`/api/auth`)
-
-- `POST /api/auth/register` - 用户注册
-- `POST /api/auth/login` - 用户登录
-- `POST /api/auth/logout` - 用户登出
-
-### 2. 用户管理接口 (`/api/users`)
-
-- `GET /api/users/profile` - 获取用户资料
-- `PUT /api/users/profile` - 更新用户资料
-- `PUT /api/users/password` - 修改密码
-
-### 3. 邮件管理接口 (`/api/emails`)
-
-- `GET /api/emails/inbox` - 获取收件箱邮件
-- `GET /api/emails/sent` - 获取已发送邮件
-- `GET /api/emails/{id}` - 获取邮件详情
-- `POST /api/emails/send` - 发送邮件
-- `PUT /api/emails/{id}/read` - 标记已读/未读
-- `PUT /api/emails/{id}/star` - 标记星标/取消星标
-- `DELETE /api/emails/{id}` - 删除邮件
-
-### 4. 附件上传接口 (`/api/emails/attachments`)
-
-- `POST /api/emails/attachments` - 上传单个附件
-- `POST /api/emails/attachments/multi` - 上传多个附件
-
-### 5. 群组管理接口 (`/api/groups`)
-
-- `POST /api/groups` - 创建群组
-- `PUT /api/groups` - 更新群组
-- `DELETE /api/groups/{groupId}` - 删除群组
-- `GET /api/groups/{groupId}` - 获取群组详情
-- `GET /api/groups/created` - 获取用户创建的群组
-- `GET /api/groups/joined` - 获取用户加入的群组
-- `GET /api/groups/all` - 获取所有群组
-- `GET /api/groups/search` - 搜索群组
-- `POST /api/groups/members` - 添加群组成员
-- `DELETE /api/groups/{groupId}/members/{accountId}` - 移除群组成员
-- `GET /api/groups/{groupId}/members` - 获取群组成员列表
-- `GET /api/groups/{groupId}/member-count` - 获取群组成员数量
-- `GET /api/groups/{groupId}/members/{accountId}/check` - 检查用户是否为群组成员
-
-## 数据库模型
-
-### 用户表 (users)
-- 用户ID、用户名、邮箱、密码、签名、管理员标志、存储配额、已用空间、最后登录时间
-
-### 邮件表 (emails)
-- 邮件ID、发件人、收件人、抄送、密送、主题、正文、附件标志、已读标志、星标标志、大小、接收时间、文件夹类型、用户ID
-
-### 附件表 (attachments)
-- 附件ID、邮件ID、文件名、文件大小、内容类型、文件路径、上传时间
-
-### 群组表 (groups)
-- 群组ID、名称、描述、成员数量、创建者ID、创建时间、最后修改时间
-
-### 群组成员表 (group_members)
-- ID、群组ID、账户ID、加入时间
-
-## 快速开始
-
-### 1. 环境要求
-
-- Java 17+
-- Maven 3.6+
-- MySQL 8.0+ (生产环境)
-
-### 2. 开发环境启动
+### 1. 启动服务器
 
 ```bash
-# 克隆项目
-git clone <repository-url>
-cd SMTPService
-
-# 编译项目
-mvn clean compile
-
-# 启动应用（使用H2内存数据库）
+# 启动Spring Boot应用
 mvn spring-boot:run
 
-# 或者使用开发配置文件
-mvn spring-boot:run -Dspring-boot.run.profiles=dev
-```
-
-应用启动后，访问：
-- API文档: http://localhost:8080/h2-console (H2控制台)
-- 应用接口: http://localhost:8080/api/*
-
-### 3. 生产环境部署
-
-```bash
-# 打包应用
+# 或者打包后运行
 mvn clean package
-
-# 运行JAR包
-java -jar target/mailbox-backend-1.0.0.jar --spring.profiles.active=prod
+java -jar target/mailbox-backend.jar
 ```
 
-## 配置说明
+### 2. 服务器启动日志
 
-### 开发环境配置 (`application-dev.properties`)
+启动成功后，你会看到类似日志：
 
-- 使用H2内存数据库
-- 启用SQL日志
-- 允许所有CORS请求
-- 文件上传到本地目录
+```
+自定义SMTP服务器启动，监听端口：0.0.0.0:25
+自定义POP3服务器启动，监听端口：0.0.0.0:110
+```
 
-### 生产环境配置 (`application-prod.properties`)
+### 3. 测试连接
 
-- 使用MySQL数据库
-- 禁用SQL日志
-- 限制CORS来源
-- 文件上传到指定目录
-- 启用Redis缓存
-
-## 安全配置
-
-- JWT Token认证
-- 密码BCrypt加密
-- CORS跨域配置
-- CSRF保护已禁用（适用于API服务）
-
-## 开发指南
-
-### 添加新的API接口
-
-1. 在 `controller` 包中创建控制器类
-2. 在 `service` 包中定义服务接口
-3. 在 `service/Impl` 包中实现服务逻辑
-4. 在 `repository` 包中定义数据访问接口
-5. 在 `entity` 包中定义实体类
-
-### 数据库迁移
-
-使用Spring Boot的 `spring.jpa.hibernate.ddl-auto` 配置：
-- `create-drop`: 开发环境，每次启动重建表
-- `validate`: 生产环境，验证表结构
-- `update`: 自动更新表结构（不推荐生产使用）
-
-## 测试
+使用提供的测试客户端：
 
 ```bash
-# 运行单元测试
-mvn test
+# 测试SMTP服务器
+java -cp target/classes com.example.mailbox.util.SmtpClientExample
 
-# 运行集成测试
-mvn verify
+# 测试POP3服务器
+java -cp target/classes com.example.mailbox.util.Pop3ClientExample
 ```
 
-## 监控和日志
+## 📱 Android客户端集成
 
-- 日志文件: `logs/mailbox.log`
-- 健康检查: `/actuator/health`
-- 指标监控: `/actuator/metrics`
+### 1. 添加网络权限
 
-## 常见问题
+在 `AndroidManifest.xml` 中添加：
 
-### 1. 数据库连接失败
+```xml
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+```
 
-检查 `application.properties` 中的数据库配置，确保MySQL服务正在运行。
+### 2. 在子线程中使用
 
-### 2. JWT Token无效
+**发送邮件示例**：
 
-确保 `jwt.secret` 配置正确，生产环境请使用强密钥。
+```java
+// 在子线程中执行
+ExecutorService executor = Executors.newSingleThreadExecutor();
 
-### 3. 文件上传失败
+executor.execute(() -> {
+    // 1. 用户登录获取JWT
+    String jwtToken = loginAndGetJwt("user@mb.com", "password");
+    
+    // 2. 创建SMTP客户端
+    AndroidSmtpClient smtpClient = new AndroidSmtpClient(
+        "your-server-ip", 25, jwtToken
+    );
+    
+    // 3. 测试连接
+    boolean connected = smtpClient.testConnection();
+    
+    // 4. 发送邮件
+    boolean sent = smtpClient.sendEmail(
+        "user@mb.com",
+        "target@mb.com", 
+        "测试邮件",
+        "这是一封来自Android应用的测试邮件！"
+    );
+    
+    // 5. 回到主线程处理结果
+    runOnUiThread(() -> {
+        if (sent) {
+            Toast.makeText(context, "邮件发送成功！", Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(context, "邮件发送失败！", Toast.LENGTH_SHORT).show();
+        }
+    });
+});
+```
 
-检查上传目录权限和磁盘空间。
+**接收邮件示例**：
 
-## 贡献指南
+```java
+executor.execute(() -> {
+    // 1. 用户登录获取JWT
+    String jwtToken = loginAndGetJwt("user@mb.com", "password");
+    
+    // 2. 创建POP3客户端
+    AndroidPop3Client pop3Client = new AndroidPop3Client(
+        "your-server-ip", 110, jwtToken
+    );
+    
+    // 3. 连接服务器
+    boolean connected = pop3Client.connect();
+    
+    // 4. 认证登录
+    boolean authenticated = pop3Client.authenticate();
+    
+    // 5. 获取邮件列表
+    List<AndroidPop3Client.EmailInfo> emails = pop3Client.listEmails();
+    
+    // 6. 读取第一封邮件
+    if (!emails.isEmpty()) {
+        String content = pop3Client.retrieveEmail(emails.get(0).getMessageId());
+        // 处理邮件内容
+    }
+    
+    // 7. 退出
+    pop3Client.quit();
+    
+    // 8. 回到主线程
+    runOnUiThread(() -> {
+        // 更新UI
+        updateEmailList(emails);
+    });
+});
+```
 
-1. Fork 项目
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
+### 3. JWT Token获取
 
-## 许可证
+通过登录接口获取JWT Token：
 
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+```java
+// 登录接口
+@PostMapping("/api/auth/login")
+public LoginResponseVO login(@RequestBody AuthRequestDTO request) {
+    // 返回包含JWT的响应
+    return authService.login(request.getIdentifier(), request.getPassword());
+}
+```
 
-## 联系方式
+响应示例：
+```json
+{
+    "token": "eyJhbGciOiJIUzI1NiJ9...",
+    "email": "user@mb.com",
+    "result": true
+}
+```
 
-如有问题或建议，请提交 Issue 或联系开发团队。
+## 🧪 测试示例
+
+### SMTP测试流程
+
+```
+客户端 → 服务器：EHLO android-app
+服务器 → 客户端：250 Hello android-app, pleased to meet you
+
+客户端 → 服务器：AUTH JWT
+服务器 → 客户端：334 Send JWT token
+
+客户端 → 服务器：eyJhbGciOiJIUzI1NiJ9...
+服务器 → 客户端：235 Authentication successful
+
+客户端 → 服务器：MAIL FROM:<user@mb.com>
+服务器 → 客户端：250 Ok
+
+客户端 → 服务器：RCPT TO:<target@mb.com>
+服务器 → 客户端：250 Ok
+
+客户端 → 服务器：DATA
+服务器 → 客户端：354 Enter message, ending with '.' on a line by itself
+
+客户端 → 服务器：
+From: user@mb.com
+To: target@mb.com
+Subject: Test Email
+
+This is a test email.
+.
+
+服务器 → 客户端：250 Ok: queued
+
+客户端 → 服务器：QUIT
+服务器 → 客户端：221 Bye
+```
+
+### POP3测试流程
+
+```
+服务器 → 客户端：+OK POP3 Server Ready (Course Design)
+
+客户端 → 服务器：AUTH JWT
+服务器 → 客户端：+OK Send JWT token
+
+客户端 → 服务器：eyJhbGciOiJIUzI1NiJ9...
+服务器 → 客户端：+OK JWT authenticated, welcome user@mb.com
+
+客户端 → 服务器：LIST
+服务器 → 客户端：+OK 2 messages (3200 bytes)
+服务器 → 客户端：1 1500
+服务器 → 客户端：2 1700
+服务器 → 客户端：.
+
+客户端 → 服务器：RETR 1
+服务器 → 客户端：+OK 1500 octets
+服务器 → 客户端：From: sender@mb.com
+服务器 → 客户端：To: user@mb.com
+服务器 → 客户端：Subject: Test Email
+服务器 → 客户端：
+服务器 → 客户端：This is a test email.
+服务器 → 客户端：.
+```
+
+## ❓ 常见问题
+
+### Q1: 连接被拒绝？
+
+**原因**：服务器未启动或端口被防火墙阻止
+
+**解决**：
+1. 确保Spring Boot应用已启动
+2. 检查防火墙是否开放25和110端口
+3. 确认服务器IP地址正确
+
+### Q2: JWT认证失败？
+
+**原因**：JWT无效或已过期
+
+**解决**：
+1. 重新登录获取新的JWT Token
+2. 检查JWT密钥配置是否正确
+3. 确认JWT未过期
+
+### Q3: Android应用无法连接？
+
+**原因**：网络权限或线程问题
+
+**解决**：
+1. 确认已添加网络权限
+2. 确保在子线程中执行网络操作
+3. 检查服务器IP地址是否正确
+
+### Q4: 如何测试本地开发？
+
+**方法1：使用10.0.2.2（Android模拟器）**
+
+```java
+// Android模拟器访问本地服务器
+AndroidSmtpClient client = new AndroidSmtpClient(
+    "10.0.2.2", 25, jwtToken
+);
+```
+
+**方法2：使用真实设备**
+
+```java
+// 使用电脑的局域网IP
+AndroidSmtpClient client = new AndroidSmtpClient(
+    "192.168.1.100", 25, jwtToken
+);
+```
+
+### Q5: 如何启用SSL/TLS？
+
+目前服务器支持明文传输，生产环境建议：
+
+1. 配置SSL证书
+2. 使用端口465（SMTPS）和995（POP3S）
+3. 修改客户端代码支持SSL连接
+
+## 🔧 服务器架构
+
+```
+src/main/java/com/example/mailbox/config/
+├── smtp/
+│   └── SmtpServerConfig.java              # 自定义SMTP服务器（端口25）
+│       ├── startCustomSmtpServer()        # 启动自定义SMTP服务器
+│       └── SmtpClientHandler              # SMTP客户端处理器
+└── pop3/
+    └── Pop3ServerConfig.java              # 自定义POP3服务器（端口110）
+        ├── startCustomPop3Server()        # 启动自定义POP3服务器
+        └── Pop3ClientHandler              # POP3客户端处理器
+```
+
+## 📞 技术支持
+
+如有问题，请联系开发团队或提交Issue。
+
+---
+
+**版本**: v5.0 (完全自定义服务器版)
+**最后更新**: 2024年12月

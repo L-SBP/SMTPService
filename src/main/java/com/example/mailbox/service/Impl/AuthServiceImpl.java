@@ -1,19 +1,19 @@
 package com.example.mailbox.service.Impl;
 
-import com.example.mailbox.dto.AuthRequestDTO;
 import com.example.mailbox.dto.RegisterRequestDTO;
 import com.example.mailbox.entity.Account;
 import com.example.mailbox.repository.UserRepository;
 import com.example.mailbox.service.AuthService;
+import com.example.mailbox.service.TokenService;
 import com.example.mailbox.util.JwtUtil;
+import com.example.mailbox.vo.LoginResponseVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import com.example.mailbox.vo.AuthResponseVO;
+import com.example.mailbox.vo.RegisterResponseVO;
+
+import java.util.Optional;
 
 @Service
 public class AuthServiceImpl implements AuthService {
@@ -33,8 +33,11 @@ public class AuthServiceImpl implements AuthService {
     @Autowired
     private JwtUtil jwtUtil;
 
+    @Autowired
+    private TokenService tokenService;
+
     @Override
-    public AuthResponseVO register(RegisterRequestDTO registerRequestDTO) {
+    public RegisterResponseVO register(RegisterRequestDTO registerRequestDTO) {
         // 检查邮箱是否已存在
         if (userRepository.existsByEmail(registerRequestDTO.getEmail())) {
             throw new RuntimeException("邮箱已被注册");
@@ -49,11 +52,8 @@ public class AuthServiceImpl implements AuthService {
         // 保存用户
         Account savedUser = userRepository.save(user);
 
-        // 生成JWT Token
-        String token = jwtUtil.generateToken(savedUser.getEmail());
-
         // 返回响应
-        AuthResponseVO response = new AuthResponseVO();
+        RegisterResponseVO response = new RegisterResponseVO();
         response.setEmail(savedUser.getEmail());
         response.setResult(true);
 
@@ -61,19 +61,33 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public Account login(String username, String password) {
-        try {
-            // 验证用户凭据
-            Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(username, password)
-            );
+    public LoginResponseVO login(String identify, String password) {
+        Optional<Account> accountOpt = userRepository.findByEmail(identify);
 
-            SecurityContextHolder.getContext().setAuthentication(authentication);
-
-            // 获取用户信息
-            return userService.getUserByEmail(username);
-        } catch (Exception e) {
-            throw new RuntimeException("登录失败: " + e.getMessage());
+        if (accountOpt.isEmpty()) {
+            accountOpt = userRepository.findByUsername(identify);
         }
+
+        if (accountOpt.isEmpty()) {
+            throw new RuntimeException("用户不存在");
+        }
+
+        Account account = accountOpt.get();
+
+        if (!passwordEncoder.matches(password, account.getPassword())) {
+            throw new RuntimeException("密码错误");
+        }
+
+        String token = jwtUtil.generateToken(account);
+
+        // 将Token存储到Redis
+        long expiration = jwtUtil.getExpiration();
+        tokenService.storeToken(token, account.getUsername(), expiration);
+
+        LoginResponseVO response = new LoginResponseVO();
+        response.setToken(token);
+        response.setEmail(account.getEmail());
+        response.setResult(true);
+        return response;
     }
 }

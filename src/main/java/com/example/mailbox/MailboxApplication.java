@@ -1,30 +1,23 @@
 package com.example.mailbox;
 
-import com.example.mailbox.server.Pop3Server;
-import com.example.mailbox.server.SmtpServer;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
+/**
+ * 邮箱应用主启动类
+ * 
+ * 使用融合后的自定义SMTP和POP3服务器（支持JWT认证）
+ * 
+ * 服务器配置说明：
+ * - SMTP服务器：端口25，支持JWT认证，具备完整的MIME解析和附件处理能力
+ * - POP3服务器：端口110，支持JWT认证，具备完整的MIME解析和附件处理能力
+ * 
+ * 服务器通过@Configuration注解自动启动，无需在Application中手动启动
+ */
 @SpringBootApplication
-public class MailboxApplication implements CommandLineRunner {
-
-    @Autowired
-    private SmtpServer smtpServer;
-
-    @Autowired
-    private Pop3Server pop3Server;
+public class MailboxApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(MailboxApplication.class, args);
-    }
-
-    @Override
-    public void run(String... args) throws Exception {
-        // 启动 Socket 服务
-        // 注意：这两个方法内部是开启新线程的，不会阻塞主线程
-        smtpServer.start();
-        pop3Server.start();
     }
 }

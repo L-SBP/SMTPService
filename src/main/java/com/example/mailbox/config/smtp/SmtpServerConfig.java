@@ -1,7 +1,21 @@
 package com.example.mailbox.config.smtp;
 
+import com.example.mailbox.entity.Blacklist;
+import com.example.mailbox.entity.Email;
+import com.example.mailbox.entity.SystemLog;
+import com.example.mailbox.repository.BlacklistRepository;
+import com.example.mailbox.repository.EmailRepository;
+import com.example.mailbox.repository.SystemLogRepository;
+import com.example.mailbox.repository.UserRepository;
+import com.example.mailbox.service.AttachmentService;
 import com.example.mailbox.util.JwtUtil;
 import com.example.mailbox.service.TokenService;
+import jakarta.activation.DataHandler;
+import jakarta.activation.FileDataSource;
+import jakarta.mail.Multipart;
+import jakarta.mail.Part;
+import jakarta.mail.Session;
+import jakarta.mail.internet.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,19 +25,24 @@ import org.springframework.context.annotation.DependsOn;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
 
 /**
  * SMTP服务器配置类
- * 作为基础设施层，负责启动和管理SMTP端口监听
+ * 融合了两套方案的优点：
+ * - 使用server的完整MIME解析能力
+ * - 使用config的JWT认证机制
+ * - 支持黑名单功能
+ * - 支持系统日志记录
  * 
- * 注意：这是一个配置类，不是普通的Service层
- * 端口监听是持续运行的后台任务，属于基础设施层面
+ * 作为基础设施层，负责启动和管理SMTP端口监听
  */
 @Configuration
 @Profile("!test") // 测试环境不启动
@@ -42,10 +61,32 @@ public class SmtpServerConfig {
     
     @Autowired
     private TokenService tokenService;
+    
+    @Autowired
+    private EmailRepository emailRepository;
+    
+    @Autowired
+    private UserRepository userRepository;
+    
+    @Autowired
+    private AttachmentService attachmentService;
+    
+    @Autowired
+    private BlacklistRepository blacklistRepository;
+    
+    @Autowired
+    private SystemLogRepository systemLogRepository;
 
     private ServerSocket serverSocket;
     private Thread serverThread;
     private volatile boolean running = false;
+    private String jwtToken;
+    private String sender;
+    private List<String> recipients = new ArrayList<>();
+    private StringBuilder dataBuilder = new StringBuilder();
+    private boolean isDataMode = false;
+    private boolean authenticated = false;
+    private String authenticatedUser;
     
     /**
      * Spring启动后执行：异步启动SMTP监听
@@ -79,6 +120,11 @@ public class SmtpServerConfig {
                         Socket clientSocket = serverSocket.accept();
                         log.info("新SMTP客户端连接：{}", clientSocket.getInetAddress());
                         
+                        // 检查黑名单
+                        if (isBlocked(clientSocket)) {
+                            continue;
+                        }
+                        
                         // 为每个客户端创建新线程处理
                         Thread clientThread = new Thread(new SmtpClientHandler(clientSocket));
                         clientThread.start();
@@ -100,15 +146,53 @@ public class SmtpServerConfig {
     }
     
     /**
+     * 检查客户端 IP 是否在黑名单中
+     */
+    private boolean isBlocked(Socket socket) {
+        String clientIp = socket.getInetAddress().getHostAddress();
+        boolean exists = blacklistRepository.existsByTypeAndValue(Blacklist.Type.IP, clientIp);
+
+        if (exists) {
+            log.warn("Blocked connection from blacklisted IP: " + clientIp);
+            saveLog(SystemLog.LogType.SMTP, clientIp, "CONNECT", "Connection blocked by IP Blacklist", "FAILURE");
+            try { socket.close(); } catch (IOException e) {}
+            return true;
+        }
+        return false;
+    }
+    
+    /**
+     * 辅助方法：保存系统日志到数据库
+     */
+    private void saveLog(SystemLog.LogType type, String operator, String action, String details, String status) {
+        try {
+            SystemLog logEntry = new SystemLog();
+            logEntry.setType(type);
+            logEntry.setOperator(operator);
+            logEntry.setAction(action);
+            logEntry.setDetails(details);
+            logEntry.setStatus(status);
+            systemLogRepository.save(logEntry);
+        } catch (Exception e) {
+            log.error("Failed to save system log", e);
+        }
+    }
+    
+    /**
      * 处理SMTP客户端连接
      */
     private class SmtpClientHandler implements Runnable {
         private final Socket clientSocket;
         private BufferedReader in;
-        private OutputStream out;
+        private PrintWriter out;
         private SmtpState state = SmtpState.AUTHORIZATION;
         private String username = null;
         private boolean authenticated = false;
+        private String jwtToken;
+        private String sender;
+        private List<String> recipients = new ArrayList<>();
+        private StringBuilder dataBuilder = new StringBuilder();
+        private boolean isDataMode = false;
         
         public SmtpClientHandler(Socket socket) {
             this.clientSocket = socket;
@@ -118,7 +202,7 @@ public class SmtpServerConfig {
         public void run() {
             try {
                 in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-                out = clientSocket.getOutputStream();
+                out = new PrintWriter(clientSocket.getOutputStream(), true);
                 
                 // 发送欢迎消息
                 sendResponse("220 SMTP Server Ready (Course Design)");
@@ -213,6 +297,7 @@ public class SmtpServerConfig {
             // 认证通过
             authenticated = true;
             this.username = username;
+            this.jwtToken = jwt;
             state = SmtpState.TRANSACTION;
             sendResponse("235 Authentication successful");
         }
@@ -225,6 +310,17 @@ public class SmtpServerConfig {
             
             if (from == null || !from.startsWith("FROM:")) {
                 sendResponse("501 Syntax error in parameters or arguments");
+                return;
+            }
+            
+            // 提取发件人邮箱
+            sender = extractEmail(from);
+            
+            // 检查发件人是否在黑名单中
+            boolean isBlocked = blacklistRepository.existsByTypeAndValue(Blacklist.Type.EMAIL, sender);
+            if (isBlocked) {
+                sendResponse("550 Sender blocked");
+                saveLog(SystemLog.LogType.SMTP, clientSocket.getInetAddress().getHostAddress(), "MAIL FROM", "Blocked sender: " + sender, "FAILURE");
                 return;
             }
             
@@ -243,7 +339,9 @@ public class SmtpServerConfig {
                 return;
             }
             
-            state = SmtpState.TRANSACTION;
+            // 提取收件人邮箱
+            String recipient = extractEmail(to);
+            recipients.add(recipient);
             sendResponse("250 Ok");
         }
         
@@ -253,21 +351,13 @@ public class SmtpServerConfig {
                 return;
             }
             
-            sendResponse("354 Enter message, ending with '.' on a line by itself");
-            
-            // 读取邮件内容
-            StringBuilder message = new StringBuilder();
-            String line;
-            while ((line = in.readLine()) != null) {
-                if (line.equals(".")) {
-                    break;
-                }
-                message.append(line).append("\n");
+            if (recipients.isEmpty()) {
+                sendResponse("503 Bad sequence of commands");
+                return;
             }
             
-            // 模拟发送邮件
-            log.info("收到邮件内容：{}", message.toString());
-            sendResponse("250 Ok: queued");
+            sendResponse("354 Enter message, ending with '.' on a line by itself");
+            isDataMode = true;
         }
         
         private void handleQuitCommand() throws IOException {
@@ -276,8 +366,123 @@ public class SmtpServerConfig {
         }
         
         private void sendResponse(String response) throws IOException {
-            out.write((response + "\r\n").getBytes());
+            out.println(response);
             out.flush();
+        }
+        
+        /**
+         * 处理邮件数据
+         */
+        private void processAndSaveEmail() {
+            if (recipients.isEmpty()) return;
+            try {
+                // 1. 解析邮件
+                MimeMessage mimeMessage = parseMimeMessage();
+                ParsedEmailData emailData = extractEmailData(mimeMessage);
+
+                // 2. 保存并记录日志
+                saveEmailToRecipients(emailData);
+
+                // 成功日志入库
+                saveLog(SystemLog.LogType.SMTP, sender, "SEND_MAIL",
+                        "Subject: " + emailData.subject() + ", Recipients: " + recipients.size(), "SUCCESS");
+
+            } catch (Exception e) {
+                log.error("Failed to parse/save email", e);
+                saveLog(SystemLog.LogType.SMTP, sender, "SEND_MAIL", "Failed to save email: " + e.getMessage(), "FAILURE");
+            } finally {
+                resetState();
+            }
+        }
+        
+        private MimeMessage parseMimeMessage() throws Exception {
+            Session session = Session.getDefaultInstance(new Properties());
+            return new MimeMessage(session, new ByteArrayInputStream(dataBuilder.toString().getBytes(StandardCharsets.UTF_8)));
+        }
+
+        // 内部记录类：用于在方法间传递解析后的数据
+        record ParsedEmailData(String subject, String body, List<SavedAttachment> attachments) {}
+
+        // 内部记录类：暂存附件数据
+        record SavedAttachment(byte[] data, String fileName, String contentType) {}
+
+        private ParsedEmailData extractEmailData(MimeMessage message) throws Exception {
+            StringBuilder textBody = new StringBuilder();
+            List<SavedAttachment> attachments = new ArrayList<>();
+            // 递归解析 MIME 树
+            parseMimeContent(message, textBody, attachments);
+            return new ParsedEmailData(message.getSubject(), textBody.toString(), attachments);
+        }
+
+        /**
+         * 递归解析 MIME 内容（区分文本和附件）
+         */
+        private void parseMimeContent(Part part, StringBuilder textBody, List<SavedAttachment> attachments) throws Exception {
+            if (Part.ATTACHMENT.equalsIgnoreCase(part.getDisposition()) ||
+                    (part.getFileName() != null && !part.getFileName().isEmpty())) {
+                // 发现附件
+                attachments.add(new SavedAttachment(part.getInputStream().readAllBytes(), part.getFileName(), part.getContentType()));
+            } else if (part.isMimeType("text/*")) {
+                // 发现正文
+                textBody.append((String) part.getContent()).append("\n");
+            } else if (part.isMimeType("multipart/*")) {
+                // 复合类型，递归处理
+                Multipart multipart = (Multipart) part.getContent();
+                for (int i = 0; i < multipart.getCount(); i++) {
+                    parseMimeContent(multipart.getBodyPart(i), textBody, attachments);
+                }
+            }
+        }
+
+        private void saveEmailToRecipients(ParsedEmailData data) {
+            for (String recipient : recipients) {
+                // 仅当收件人是本系统用户时才保存
+                userRepository.findByEmail(recipient).ifPresent(user -> {
+                    Email email = new Email();
+                    email.setSender(sender != null ? sender : "unknown");
+                    email.setRecipients(new ArrayList<>(recipients));
+                    email.setSubject(data.subject() != null ? data.subject() : "(No Subject)");
+                    email.setBody(data.body());
+                    email.setUser(user);
+                    email.setFolderType(Email.FolderType.INBOX);
+                    email.setReceivedTime(LocalDateTime.now());
+                    email.setHasAttachment(!data.attachments().isEmpty());
+
+                    // 保存邮件本体
+                    Email savedEmail = emailRepository.save(email);
+
+                    // 保存附件文件
+                    saveAttachments(savedEmail, data.attachments());
+
+                    log.info("Email saved for user: " + recipient);
+                });
+            }
+        }
+
+        private void saveAttachments(Email email, List<SavedAttachment> attachments) {
+            for (SavedAttachment att : attachments) {
+                attachmentService.saveAttachmentFromStream(
+                        email,
+                        new ByteArrayInputStream(att.data()),
+                        att.contentType(),
+                        att.fileName(),
+                        att.data().length
+                );
+            }
+        }
+        
+        private void resetState() {
+            sender = null;
+            recipients.clear();
+            dataBuilder.setLength(0);
+            isDataMode = false;
+        }
+        
+        private String extractEmail(String text) {
+            int start = text.indexOf('<'); int end = text.indexOf('>');
+            if (start != -1 && end != -1) return text.substring(start + 1, end);
+            String[] parts = text.split(":", 2);
+            return parts.length > 1 ? parts[1].trim() : "";
         }
     }
     

@@ -18,7 +18,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin")
-@PreAuthorize("hasRole('ADMIN')") // 只有管理员能访问
+@PreAuthorize("hasRole('ADMIN')") // 仅管理员可访问
 public class AdminController {
 
     @Autowired private UserRepository userRepository;
@@ -26,7 +26,6 @@ public class AdminController {
 
     // --- 用户管理 ---
 
-    // 1. 获取所有用户列表
     @GetMapping("/users")
     public ResponseEntity<ApiResponse<Page<Account>>> getAllUsers(@RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
@@ -45,7 +44,6 @@ public class AdminController {
         return ResponseEntity.ok(new ApiResponse<>(true, responsePage, "获取用户列表成功", null));
     }
 
-    // 2. 封禁/解封用户
     @PutMapping("/users/{id}/status")
     public ResponseEntity<ApiResponse<String>> updateUserStatus(@PathVariable Long id, @RequestParam Boolean enabled) {
         return userRepository.findById(id).map(user -> {
@@ -58,13 +56,11 @@ public class AdminController {
 
     // --- 黑名单管理 ---
 
-    // 3. 获取黑名单列表
     @GetMapping("/blacklist")
     public ResponseEntity<ApiResponse<List<Blacklist>>> getBlacklist() {
         return ResponseEntity.ok(new ApiResponse<>(true, blacklistRepository.findAll(), "获取黑名单成功", null));
     }
 
-    // 4. 添加黑名单 (IP 或 Email)
     @PostMapping("/blacklist")
     public ResponseEntity<ApiResponse<Blacklist>> addToBlacklist(@RequestBody BlacklistRequest request) {
         if (blacklistRepository.existsByTypeAndValue(request.getType(), request.getValue())) {
@@ -78,7 +74,6 @@ public class AdminController {
         return ResponseEntity.ok(new ApiResponse<>(true, blacklistRepository.save(blacklist), "添加成功", null));
     }
 
-    // 5. 移除黑名单
     @DeleteMapping("/blacklist/{id}")
     public ResponseEntity<ApiResponse<String>> removeFromBlacklist(@PathVariable Long id) {
         blacklistRepository.deleteById(id);

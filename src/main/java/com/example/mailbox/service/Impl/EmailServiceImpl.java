@@ -75,7 +75,7 @@ public class EmailServiceImpl implements EmailService {
                 inboxEmail.setUser(recipientUser);
                 inboxEmail.setFolderType(FolderType.INBOX);
                 inboxEmail.setRead(false);
-                // 确保收件人看到的是发件时间，而不是入库时间（虽然这里是同一时刻）
+                // 确保收件人看到的是发件时间
                 inboxEmail.setReceivedTime(now);
                 emailRepository.save(inboxEmail);
             });
@@ -87,8 +87,6 @@ public class EmailServiceImpl implements EmailService {
         email.setSender(senderEmail);
         email.setRecipients(request.getTo());
         email.setCc(request.getCc());
-        // 注意：BCC 通常只在发件箱保留，收件箱副本不应包含 BCC 列表，这里简化处理保留了原逻辑
-        // 如果要严谨，distributeToRecipients 里存的副本应该清空 bcc
         email.setBcc(request.getBcc());
         email.setSubject(request.getSubject());
         email.setBody(request.getBody());
@@ -119,14 +117,7 @@ public class EmailServiceImpl implements EmailService {
     }
 
     private Page<Email> convertToPage(org.springframework.data.domain.Page<Email> springPage) {
-        return new Page<>(
-            springPage.getContent(),
-            springPage.getTotalElements(),
-            springPage.getTotalPages(),
-            springPage.getSize(),
-            springPage.getNumber(),
-            springPage.isFirst(),
-            springPage.isLast()
-        );
+        return new Page<>(springPage.getContent(), springPage.getTotalElements(), springPage.getTotalPages(),
+                springPage.getSize(), springPage.getNumber(), springPage.isFirst(), springPage.isLast());
     }
 }

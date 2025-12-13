@@ -37,18 +37,9 @@ public class Account implements UserDetails {
     @Column(name = "is_admin")
     private Boolean isAdmin = false;
 
-    // --- 新增字段 ---
+    // --- 新增：账号启用状态 ---
     @Column(name = "enabled")
     private Boolean enabled = true;
-    // ----------------
-
-    public Boolean getIsAdmin() {
-        return isAdmin;
-    }
-
-    public void setIsAdmin(Boolean isAdmin) {
-        this.isAdmin = isAdmin;
-    }
 
     @Column(name = "quota_limit")
     private Double quotaLimit = 100.0;
@@ -75,7 +66,7 @@ public class Account implements UserDetails {
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return Collections.singletonList(
-            new SimpleGrantedAuthority(isAdmin ? "ROLE_ADMIN" : "ROLE_USER")
+                new SimpleGrantedAuthority(Boolean.TRUE.equals(isAdmin) ? "ROLE_ADMIN" : "ROLE_USER")
         );
     }
 
@@ -85,24 +76,23 @@ public class Account implements UserDetails {
     }
 
     @Override
-    public boolean isAccountNonExpired() {
-        return true;
-    }
+    public boolean isAccountNonExpired() { return true; }
 
     @Override
-    public boolean isAccountNonLocked() {
-        return true;
-    }
+    public boolean isAccountNonLocked() { return true; }
 
     @Override
-    public boolean isCredentialsNonExpired() {
-        return true;
-    }
+    public boolean isCredentialsNonExpired() { return true; }
 
-    // --- 修改此方法 ---
+    // --- 修改：关联数据库字段 ---
     @Override
     public boolean isEnabled() {
-        return enabled == null || enabled; // 默认为 true
+        return enabled == null || enabled;
     }
-    // ------------------
+
+    // 手动 Getter/Setter 确保兼容性
+    public Boolean getIsAdmin() { return isAdmin; }
+    public void setIsAdmin(Boolean isAdmin) { this.isAdmin = isAdmin; }
+    public Boolean getEnabled() { return enabled; }
+    public void setEnabled(Boolean enabled) { this.enabled = enabled; }
 }

@@ -118,6 +118,11 @@ public class Pop3Server {
             if (authenticate(pendingUsername, password)) {
                 currentUser = userRepository.findByEmail(pendingUsername).orElse(null);
                 if (currentUser != null) {
+                    // 检查用户是否被封禁
+                    if (!currentUser.isEnabled()) {
+                        writer.println("-ERR Account disabled");
+                        return;
+                    }
                     var page = emailRepository.findByUserEmailAndFolderTypeOrderByReceivedTimeDesc(
                             pendingUsername, Email.FolderType.INBOX, org.springframework.data.domain.Pageable.unpaged());
                     messageList = page != null ? page.getContent() : new ArrayList<>();

@@ -1,7 +1,11 @@
 package com.example.mailbox.server;
 
+import com.example.mailbox.entity.Blacklist; // 新增导入
 import com.example.mailbox.entity.Email;
+import com.example.mailbox.entity.SystemLog; // 新增导入
+import com.example.mailbox.repository.BlacklistRepository; // 新增导入
 import com.example.mailbox.repository.EmailRepository;
+import com.example.mailbox.repository.SystemLogRepository; // 新增导入
 import com.example.mailbox.repository.UserRepository;
 import com.example.mailbox.service.AttachmentService;
 import jakarta.mail.Multipart;
@@ -18,7 +22,6 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 
@@ -34,25 +37,35 @@ public class SmtpServer {
     @Autowired private UserRepository userRepository;
     @Autowired private AttachmentService attachmentService;
 
-    // 静态黑名单配置 (实际生产中建议改为数据库查询)
-    private static final List<String> BLACKLIST_IPS = Arrays.asList("192.168.1.100");
-    private static final List<String> BLACKLIST_EMAILS = Arrays.asList("spammer@bad.com");
+    // --- 新增注入 ---
+    @Autowired private BlacklistRepository blacklistRepository;
+    @Autowired private SystemLogRepository systemLogRepository;
+
+    // 移除旧的静态黑名单
+    // private static final List<String> BLACKLIST_IPS = ...
 
     /**
      * 启动 SMTP 服务监听
      */
     public void start() {
         new Thread(() -> {
-            int port = 2500; // 开发环境使用 2500，生产环境改为 25
+            int port = 2500;
             try (ServerSocket serverSocket = new ServerSocket(port)) {
                 log.info("SMTP Server started on port " + port);
+                // 记录启动日志
+                saveLog(SystemLog.LogType.SYSTEM, "SYSTEM", "STARTUP", "SMTP Server started on port " + port, "SUCCESS");
+
                 while (true) {
                     Socket clientSocket = serverSocket.accept();
-                    if (isBlocked(clientSocket)) continue; // 黑名单拦截
+                    // 检查黑名单
+                    if (isBlocked(clientSocket)) {
+                        continue;
+                    }
                     new Thread(new SmtpHandler(clientSocket)).start();
                 }
             } catch (IOException e) {
                 log.error("SMTP Server Error", e);
+                saveLog(SystemLog.LogType.SYSTEM, "SYSTEM", "ERROR", "SMTP Server crashed: " + e.getMessage(), "FAILURE");
             }
         }).start();
     }
@@ -60,14 +73,35 @@ public class SmtpServer {
     /**
      * 检查客户端 IP 是否在黑名单中
      */
-    private boolean isBlocked(Socket socket) throws IOException {
+    private boolean isBlocked(Socket socket) {
         String clientIp = socket.getInetAddress().getHostAddress();
-        if (BLACKLIST_IPS.contains(clientIp)) {
+        //
+        boolean exists = blacklistRepository.existsByTypeAndValue(Blacklist.Type.IP, clientIp);
+
+        if (exists) {
             log.warn("Blocked connection from blacklisted IP: " + clientIp);
-            socket.close();
+            saveLog(SystemLog.LogType.SMTP, clientIp, "CONNECT", "Connection blocked by IP Blacklist", "FAILURE");
+            try { socket.close(); } catch (IOException e) {}
             return true;
         }
         return false;
+    }
+
+    /**
+     * 辅助方法：保存系统日志到数据库
+     */
+    private void saveLog(SystemLog.LogType type, String operator, String action, String details, String status) {
+        try {
+            SystemLog logEntry = new SystemLog();
+            logEntry.setType(type);
+            logEntry.setOperator(operator);
+            logEntry.setAction(action);
+            logEntry.setDetails(details);
+            logEntry.setStatus(status);
+            systemLogRepository.save(logEntry);
+        } catch (Exception e) {
+            log.error("Failed to save system log", e);
+        }
     }
 
     /**
@@ -88,6 +122,7 @@ public class SmtpServer {
 
         @Override
         public void run() {
+            String clientIp = socket.getInetAddress().getHostAddress();
             try {
                 initStreams();
                 writer.println("220 Welcome to Mailbox SMTP Server");
@@ -102,10 +137,12 @@ public class SmtpServer {
                 }
             } catch (Exception e) {
                 log.error("SMTP Handler Error", e);
+                saveLog(SystemLog.LogType.SMTP, clientIp, "SESSION", "Error: " + e.getMessage(), "FAILURE");
             } finally {
                 closeSocket();
             }
         }
+
 
         private void initStreams() throws IOException {
             reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
@@ -130,8 +167,10 @@ public class SmtpServer {
          */
         private void handleCommand(String line) {
             String cmd = line.trim().toUpperCase();
+            String clientIp = socket.getInetAddress().getHostAddress();
+
             if (cmd.startsWith("HELO") || cmd.startsWith("EHLO")) {
-                writer.println("250 Hello " + socket.getInetAddress().getHostAddress());
+                writer.println("250 Hello " + clientIp);
             } else if (cmd.startsWith("MAIL FROM:")) {
                 handleMailFrom(line);
             } else if (cmd.startsWith("RCPT TO:")) {
@@ -150,10 +189,17 @@ public class SmtpServer {
             }
         }
 
+        /**
+         * 改进：查询数据库检查发件人邮箱黑名单
+         */
         private void handleMailFrom(String line) {
             sender = extractEmail(line);
-            if (BLACKLIST_EMAILS.contains(sender)) {
+            // 查询数据库
+            boolean isBlocked = blacklistRepository.existsByTypeAndValue(Blacklist.Type.EMAIL, sender);
+
+            if (isBlocked) {
                 writer.println("550 Sender blocked");
+                saveLog(SystemLog.LogType.SMTP, socket.getInetAddress().getHostAddress(), "MAIL FROM", "Blocked sender: " + sender, "FAILURE");
             } else {
                 writer.println("250 OK");
             }
@@ -170,16 +216,20 @@ public class SmtpServer {
         private void processAndSaveEmail() {
             if (recipients.isEmpty()) return;
             try {
-                // 1. 使用 JavaMail 解析原始数据
+                // 1. 解析邮件
                 MimeMessage mimeMessage = parseMimeMessage();
-
-                // 2. 提取正文和附件
                 ParsedEmailData emailData = extractEmailData(mimeMessage);
 
-                // 3. 分发给所有收件人并保存到数据库
+                // 2. 保存并记录日志
                 saveEmailToRecipients(emailData);
+
+                // 成功日志入库
+                saveLog(SystemLog.LogType.SMTP, sender, "SEND_MAIL",
+                        "Subject: " + emailData.subject() + ", Recipients: " + recipients.size(), "SUCCESS");
+
             } catch (Exception e) {
                 log.error("Failed to parse/save email", e);
+                saveLog(SystemLog.LogType.SMTP, sender, "SEND_MAIL", "Failed to save email: " + e.getMessage(), "FAILURE");
             } finally {
                 resetState();
             }

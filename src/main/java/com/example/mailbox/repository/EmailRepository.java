@@ -25,6 +25,17 @@ public interface EmailRepository extends JpaRepository<Email, Long> {
     long countByUserEmailAndIsStarred(String email, Boolean isStarred);
 
     // 暂时注释掉有问题的查询方法
-    // @Query("SELECT e FROM Email e WHERE e.user.email = :email AND (LOWER(e.subject) LIKE LOWER(CONCAT('%', :query, '%')) OR LOWER(e.body) LIKE LOWER(CONCAT('%', :query, '%')))")
-    // Page<Email> searchByEmailAndContent(@Param("email") String email, @Param("query") String query, Pageable pageable);
+    // 使用原生 SQL 查询，避开 Hibernate 6 对 Lob 字段和 CONCAT 函数的类型校验问题
+    @Query(value = "SELECT e.* FROM emails e " +
+            "JOIN users u ON e.user_id = u.id " +
+            "WHERE u.email = :email " +
+            "AND (LOWER(e.subject) LIKE LOWER(CONCAT('%', :query, '%')) " +
+            "OR LOWER(e.body) LIKE LOWER(CONCAT('%', :query, '%')))",
+            countQuery = "SELECT count(*) FROM emails e " +
+                    "JOIN users u ON e.user_id = u.id " +
+                    "WHERE u.email = :email " +
+                    "AND (LOWER(e.subject) LIKE LOWER(CONCAT('%', :query, '%')) " +
+                    "OR LOWER(e.body) LIKE LOWER(CONCAT('%', :query, '%')))",
+            nativeQuery = true)
+    Page<Email> searchByEmailAndContent(@Param("email") String email, @Param("query") String query, Pageable pageable);
 }

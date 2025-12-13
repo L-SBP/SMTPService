@@ -3,6 +3,7 @@ package com.example.mailbox.server;
 import com.example.mailbox.entity.Account;
 import com.example.mailbox.entity.Attachment;
 import com.example.mailbox.entity.Email;
+import com.example.mailbox.entity.SystemLog;
 import com.example.mailbox.repository.AttachmentRepository;
 import com.example.mailbox.repository.EmailRepository;
 import com.example.mailbox.repository.UserRepository;
@@ -15,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import com.example.mailbox.repository.SystemLogRepository;
 
 import java.io.*;
 import java.net.ServerSocket;
@@ -31,6 +33,7 @@ public class Pop3Server {
     @Autowired private EmailRepository emailRepository;
     @Autowired private AttachmentRepository attachmentRepository;
     @Autowired private PasswordEncoder passwordEncoder;
+    @Autowired private SystemLogRepository systemLogRepository;
 
     public void start() {
         new Thread(() -> {
@@ -43,6 +46,21 @@ public class Pop3Server {
                 }
             } catch (IOException e) { log.error("POP3 Server Error", e); }
         }).start();
+    }
+
+
+    private void saveLog(SystemLog.LogType type, String operator, String action, String details, String status) {
+        try {
+            SystemLog logEntry = new SystemLog();
+            logEntry.setType(type);
+            logEntry.setOperator(operator);
+            logEntry.setAction(action);
+            logEntry.setDetails(details);
+            logEntry.setStatus(status);
+            systemLogRepository.save(logEntry);
+        } catch (Exception e) {
+            log.error("Failed to save system log", e);
+        }
     }
 
     class Pop3Handler implements Runnable {
@@ -121,14 +139,17 @@ public class Pop3Server {
                     // 检查用户是否被封禁
                     if (!currentUser.isEnabled()) {
                         writer.println("-ERR Account disabled");
+                        saveLog(SystemLog.LogType.POP3, pendingUsername, "LOGIN", "Account disabled", "FAILURE"); // 新增
                         return;
                     }
                     var page = emailRepository.findByUserEmailAndFolderTypeOrderByReceivedTimeDesc(
                             pendingUsername, Email.FolderType.INBOX, org.springframework.data.domain.Pageable.unpaged());
                     messageList = page != null ? page.getContent() : new ArrayList<>();
                     writer.println("+OK Logged in");
+                    saveLog(SystemLog.LogType.POP3, pendingUsername, "LOGIN", "Login successful", "SUCCESS"); // 新增
                 } else {
                     writer.println("-ERR User not found");
+                    saveLog(SystemLog.LogType.POP3, pendingUsername, "LOGIN", "User not found", "FAILURE"); // 新增
                 }
             } else {
                 writer.println("-ERR Auth failed");
@@ -155,6 +176,7 @@ public class Pop3Server {
             int index = parseIndex(arg);
             if (index >= 0 && index < messageList.size()) {
                 writer.println("+OK message follows");
+                saveLog(SystemLog.LogType.POP3, currentUser.getEmail(), "RETR", "Retrieved email ID: " + messageList.get(index).getId(), "SUCCESS"); // 新增
                 try {
                     sendMimeMessage(messageList.get(index));
                 } catch (Exception e) {

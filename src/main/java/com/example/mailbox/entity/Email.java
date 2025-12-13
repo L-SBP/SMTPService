@@ -22,17 +22,17 @@ public class Email {
     @Column(nullable = false)
     private String sender;
 
-    @ElementCollection
+    @ElementCollection(fetch = FetchType.EAGER) // 修改这里
     @CollectionTable(name = "email_recipients", joinColumns = @JoinColumn(name = "email_id"))
     @Column(name = "recipient")
     private List<String> recipients;
 
-    @ElementCollection
+    @ElementCollection(fetch = FetchType.EAGER) // 建议把抄送也改了
     @CollectionTable(name = "email_cc", joinColumns = @JoinColumn(name = "email_id"))
     @Column(name = "cc")
     private List<String> cc;
 
-    @ElementCollection
+    @ElementCollection(fetch = FetchType.EAGER) // 建议把密送也改了
     @CollectionTable(name = "email_bcc", joinColumns = @JoinColumn(name = "email_id"))
     @Column(name = "bcc")
     private List<String> bcc;

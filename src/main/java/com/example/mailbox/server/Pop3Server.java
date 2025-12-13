@@ -1,36 +1,37 @@
 package com.example.mailbox.server;
 
 import com.example.mailbox.entity.Account;
+import com.example.mailbox.entity.Attachment;
 import com.example.mailbox.entity.Email;
+import com.example.mailbox.repository.AttachmentRepository;
 import com.example.mailbox.repository.EmailRepository;
 import com.example.mailbox.repository.UserRepository;
+import jakarta.activation.DataHandler;
+import jakarta.activation.FileDataSource;
+import jakarta.mail.BodyPart;
+import jakarta.mail.Multipart;
+import jakarta.mail.Session;
+import jakarta.mail.internet.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 
-/**
- * 简易 POP3 服务器实现
- * 监听端口：1100 (开发环境) / 110 (生产环境)
- */
 @Slf4j
 @Component
 public class Pop3Server {
 
-    @Autowired
-    private UserRepository userRepository;
-    @Autowired
-    private EmailRepository emailRepository;
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    @Autowired private UserRepository userRepository;
+    @Autowired private EmailRepository emailRepository;
+    @Autowired private AttachmentRepository attachmentRepository;
+    @Autowired private PasswordEncoder passwordEncoder;
 
     public void start() {
         new Thread(() -> {
@@ -39,11 +40,11 @@ public class Pop3Server {
                 log.info("POP3 Server started on port " + port);
                 while (true) {
                     Socket clientSocket = serverSocket.accept();
+                    // 设置超时防止僵尸连接
+                    clientSocket.setSoTimeout(60000);
                     new Thread(new Pop3Handler(clientSocket)).start();
                 }
-            } catch (IOException e) {
-                log.error("POP3 Server Error", e);
-            }
+            } catch (IOException e) { log.error("POP3 Server Error", e); }
         }).start();
     }
 
@@ -51,20 +52,16 @@ public class Pop3Server {
         private Socket socket;
         private BufferedReader reader;
         private PrintWriter writer;
-
-        // 会话状态
         private Account currentUser;
-        private List<Email> messageList; // 缓存当前会话的邮件列表
+        private List<Email> messageList = new ArrayList<>(); // 初始化防止空指针
 
-        public Pop3Handler(Socket socket) {
-            this.socket = socket;
-        }
+        public Pop3Handler(Socket socket) { this.socket = socket; }
 
         @Override
         public void run() {
             try {
                 reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
-                writer = new PrintWriter(socket.getOutputStream(), true);
+                writer = new PrintWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8"), true);
 
                 writer.println("+OK POP3 server ready");
 
@@ -72,70 +69,111 @@ public class Pop3Server {
                 String pendingUsername = null;
 
                 while ((line = reader.readLine()) != null) {
-                    String[] parts = line.trim().split("\\s+", 2);
-                    String command = parts[0].toUpperCase();
-                    String arg = parts.length > 1 ? parts[1] : "";
+                    try {
+                        String[] parts = line.trim().split("\\s+", 2);
+                        if (parts.length == 0) continue;
 
-                    if ("USER".equals(command)) {
-                        pendingUsername = arg;
-                        writer.println("+OK User name accepted, need password");
-                    }
-                    else if ("PASS".equals(command)) {
-                        if (authenticate(pendingUsername, arg)) {
-                            currentUser = userRepository.findByEmail(pendingUsername).orElse(null);
-                            // 获取该用户的收件箱邮件
-                            // 注意：Spring Data JPA 分页是从0开始，这里传 null 或 unpaged 获取所有
-                            messageList = emailRepository.findByUserEmailAndFolderTypeOrderByReceivedTimeDesc(
-                                    pendingUsername, Email.FolderType.INBOX, org.springframework.data.domain.Pageable.unpaged()
-                            ).getContent();
+                        String command = parts[0].toUpperCase();
+                        String arg = parts.length > 1 ? parts[1] : "";
 
-                            writer.println("+OK Logged in successfully");
-                        } else {
-                            writer.println("-ERR Authentication failed");
-                        }
-                    }
-                    else if ("STAT".equals(command)) {
-                        if (!checkAuth()) continue;
-                        // 返回：+OK <邮件数量> <总大小>
-                        long totalSize = messageList.stream().mapToLong(e -> e.getBody().length()).sum();
-                        writer.println("+OK " + messageList.size() + " " + totalSize);
-                    }
-                    else if ("LIST".equals(command)) {
-                        if (!checkAuth()) continue;
-                        writer.println("+OK Scan listing follows");
-                        for (int i = 0; i < messageList.size(); i++) {
-                            // POP3 序号从1开始
-                            writer.println((i + 1) + " " + messageList.get(i).getBody().length());
-                        }
-                        writer.println(".");
-                    }
-                    else if ("RETR".equals(command)) {
-                        if (!checkAuth()) continue;
-                        try {
-                            int index = Integer.parseInt(arg) - 1;
+                        log.debug("Received POP3 command: {}", command);
+
+                        if ("USER".equals(command)) {
+                            pendingUsername = arg;
+                            writer.println("+OK User name accepted");
+                        } else if ("PASS".equals(command)) {
+                            if (authenticate(pendingUsername, arg)) {
+                                currentUser = userRepository.findByEmail(pendingUsername).orElse(null);
+                                if (currentUser != null) {
+                                    // 确保获取非空列表
+                                    var page = emailRepository.findByUserEmailAndFolderTypeOrderByReceivedTimeDesc(
+                                            pendingUsername, Email.FolderType.INBOX, org.springframework.data.domain.Pageable.unpaged()
+                                    );
+                                    messageList = page != null ? page.getContent() : new ArrayList<>();
+                                    writer.println("+OK Logged in");
+                                } else {
+                                    writer.println("-ERR User not found");
+                                }
+                            } else {
+                                writer.println("-ERR Auth failed");
+                            }
+                        } else if ("STAT".equals(command)) {
+                            if (!checkAuth()) continue;
+                            long totalSize = 0;
+                            for (Email e : messageList) {
+                                totalSize += (e.getBody() == null ? 0 : e.getBody().length());
+                            }
+                            writer.println("+OK " + messageList.size() + " " + totalSize);
+                        } else if ("LIST".equals(command)) {
+                            if (!checkAuth()) continue;
+                            writer.println("+OK Listing follows");
+                            for (int i = 0; i < messageList.size(); i++) {
+                                int size = (messageList.get(i).getBody() == null ? 0 : messageList.get(i).getBody().length());
+                                writer.println((i + 1) + " " + size);
+                            }
+                            writer.println(".");
+                        } else if ("RETR".equals(command)) {
+                            if (!checkAuth()) continue;
+                            int index = -1;
+                            try { index = Integer.parseInt(arg) - 1; } catch (NumberFormatException e) {
+                                writer.println("-ERR Invalid message number format");
+                                continue;
+                            }
+
                             if (index >= 0 && index < messageList.size()) {
                                 Email email = messageList.get(index);
-                                writer.println("+OK " + email.getBody().length() + " octets");
-                                // 发送邮件内容。如果是纯文本存储的，建议补充一些 Header 伪装成 MIME
-                                sendMimeContent(email);
+                                writer.println("+OK message follows");
+                                try {
+                                    // 关键：确保这里不会抛出导致连接断开的异常
+                                    sendMimeMessage(email);
+                                } catch (Exception e) {
+                                    log.error("Failed to construct MIME message for email ID: " + email.getId(), e);
+                                    // 如果已经在传输过程中出错，客户端可能已经收到部分数据，这里再发错误可能没用，但记录日志很关键
+                                }
                                 writer.println(".");
                             } else {
-                                writer.println("-ERR Invalid message number");
+                                writer.println("-ERR Invalid message number: " + (index + 1));
                             }
-                        } catch (NumberFormatException e) {
-                            writer.println("-ERR Invalid argument");
+                        } else if ("QUIT".equals(command)) {
+                            writer.println("+OK Bye"); break;
+                        } else if ("CAPA".equals(command)) {
+                            writer.println("+OK Capability list follows");
+                            writer.println("USER");
+                            writer.println("UIDL");
+                            writer.println(".");
+                        } else if ("UIDL".equals(command)) {
+                            if (!checkAuth()) continue;
+                            if (arg.isEmpty()) {
+                                writer.println("+OK Unique-ID listing follows");
+                                for (int i = 0; i < messageList.size(); i++) {
+                                    writer.println((i + 1) + " " + messageList.get(i).getId());
+                                }
+                                writer.println(".");
+                            } else {
+                                int index = -1;
+                                try { index = Integer.parseInt(arg) - 1; } catch (NumberFormatException e) {}
+                                if (index >= 0 && index < messageList.size()) {
+                                    writer.println("+OK " + (index + 1) + " " + messageList.get(index).getId());
+                                } else {
+                                    writer.println("-ERR Invalid message number");
+                                }
+                            }
+                        } else if ("NOOP".equals(command)) {
+                            writer.println("+OK");
+                        } else {
+                            writer.println("-ERR Unknown command");
                         }
-                    }
-                    else if ("QUIT".equals(command)) {
-                        writer.println("+OK Bye");
-                        break;
-                    }
-                    else {
-                        writer.println("-ERR Unknown command");
+
+                        writer.flush(); // 确保数据立即发送
+
+                    } catch (Exception cmdEx) {
+                        log.error("Error processing POP3 command: " + line, cmdEx);
+                        writer.println("-ERR Server error processing command");
+                        writer.flush();
                     }
                 }
             } catch (Exception e) {
-                log.error("POP3 Handler Error", e);
+                log.error("POP3 Fatal Error", e);
             } finally {
                 try { socket.close(); } catch (IOException e) {}
             }
@@ -144,6 +182,7 @@ public class Pop3Server {
         private boolean checkAuth() {
             if (currentUser == null) {
                 writer.println("-ERR Unauthorized");
+                writer.flush();
                 return false;
             }
             return true;
@@ -156,21 +195,57 @@ public class Pop3Server {
                     .orElse(false);
         }
 
-        private void sendMimeContent(Email email) {
-            // 如果数据库存的是 raw data (包含 Header)，直接发：
-            // writer.println(email.getBody());
+        private void sendMimeMessage(Email email) throws Exception {
+            Session session = Session.getDefaultInstance(new Properties());
+            MimeMessage mimeMessage = new MimeMessage(session);
 
-            // 如果数据库存的只是正文，需要构造 Header，否则客户端可能显示为空白或乱码
-            // 简单构造：
-            if (!email.getBody().contains("Subject:")) {
-                writer.println("Date: " + java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME.format(java.time.ZonedDateTime.now()));
-                writer.println("From: " + email.getSender());
-                writer.println("To: " + String.join(",", email.getRecipients()));
-                writer.println("Subject: " + email.getSubject());
-                writer.println("Content-Type: text/plain; charset=UTF-8");
-                writer.println(); // Header 和 Body 的空行
+            mimeMessage.setFrom(new InternetAddress(email.getSender() != null ? email.getSender() : "unknown@server"));
+
+            if (email.getRecipients() != null && !email.getRecipients().isEmpty()) {
+                try {
+                    mimeMessage.setRecipients(MimeMessage.RecipientType.TO, InternetAddress.parse(String.join(",", email.getRecipients())));
+                } catch (Exception e) {
+                    mimeMessage.setRecipients(MimeMessage.RecipientType.TO, InternetAddress.parse("undisclosed-recipients@server"));
+                }
             }
-            writer.println(email.getBody());
+
+            mimeMessage.setSubject(email.getSubject() != null ? email.getSubject() : "", "UTF-8");
+
+            if (email.getReceivedTime() != null) {
+                mimeMessage.setSentDate(java.sql.Timestamp.valueOf(email.getReceivedTime()));
+            } else {
+                mimeMessage.setSentDate(new java.util.Date());
+            }
+
+            Multipart multipart = new MimeMultipart();
+
+            // 正文
+            BodyPart textPart = new MimeBodyPart();
+            textPart.setContent(email.getBody() != null ? email.getBody() : "", "text/html; charset=UTF-8");
+            multipart.addBodyPart(textPart);
+
+            // 附件
+            if (Boolean.TRUE.equals(email.getHasAttachment())) {
+                List<Attachment> attachments = attachmentRepository.findByEmailId(email.getId());
+                if (attachments != null) { // 判空
+                    for (Attachment att : attachments) {
+                        try {
+                            MimeBodyPart attachmentPart = new MimeBodyPart();
+                            FileDataSource source = new FileDataSource(att.getFilePath());
+                            attachmentPart.setDataHandler(new DataHandler(source));
+                            attachmentPart.setFileName(MimeUtility.encodeText(att.getFileName() != null ? att.getFileName() : "unknown"));
+                            multipart.addBodyPart(attachmentPart);
+                        } catch (Exception e) {
+                            log.error("Failed to attach file: " + att.getFileName(), e);
+                        }
+                    }
+                }
+            }
+
+            mimeMessage.setContent(multipart);
+            mimeMessage.saveChanges(); // 确保 header 更新
+            mimeMessage.writeTo(socket.getOutputStream());
+            socket.getOutputStream().flush(); // 强制刷新流
         }
     }
 }

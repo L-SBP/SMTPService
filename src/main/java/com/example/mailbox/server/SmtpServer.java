@@ -3,23 +3,23 @@ package com.example.mailbox.server;
 import com.example.mailbox.entity.Email;
 import com.example.mailbox.repository.EmailRepository;
 import com.example.mailbox.repository.UserRepository;
+import com.example.mailbox.service.AttachmentService;
+import jakarta.mail.BodyPart;
+import jakarta.mail.Multipart;
+import jakarta.mail.Part;
 import jakarta.mail.Session;
 import jakarta.mail.internet.MimeMessage;
-import jakarta.mail.internet.MimeMultipart;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 
@@ -33,13 +33,27 @@ public class SmtpServer {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private AttachmentService attachmentService;
+
+    // 简单的黑名单列表（模拟 PDF 中的地址过滤）
+    private static final List<String> BLACKLIST_IPS = Arrays.asList("192.168.1.100");
+    private static final List<String> BLACKLIST_EMAILS = Arrays.asList("spammer@bad.com");
+
     public void start() {
         new Thread(() -> {
-            int port = 2500; // 开发环境端口
+            int port = 2500;
             try (ServerSocket serverSocket = new ServerSocket(port)) {
                 log.info("SMTP Server started on port " + port);
                 while (true) {
                     Socket clientSocket = serverSocket.accept();
+                    // 1. IP 过滤
+                    String clientIp = clientSocket.getInetAddress().getHostAddress();
+                    if (BLACKLIST_IPS.contains(clientIp)) {
+                        log.warn("Blocked connection from blacklisted IP: " + clientIp);
+                        clientSocket.close();
+                        continue;
+                    }
                     new Thread(new SmtpHandler(clientSocket)).start();
                 }
             } catch (IOException e) {
@@ -52,15 +66,12 @@ public class SmtpServer {
         private Socket socket;
         private BufferedReader reader;
         private PrintWriter writer;
-
         private String sender;
         private List<String> recipients = new ArrayList<>();
         private StringBuilder dataBuilder = new StringBuilder();
         private boolean isDataMode = false;
 
-        public SmtpHandler(Socket socket) {
-            this.socket = socket;
-        }
+        public SmtpHandler(Socket socket) { this.socket = socket; }
 
         @Override
         public void run() {
@@ -68,17 +79,17 @@ public class SmtpServer {
                 reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
                 writer = new PrintWriter(socket.getOutputStream(), true);
 
-                writer.println("220 Welcome to Java Mailbox SMTP Server");
+                writer.println("220 Welcome to Mailbox SMTP Server");
 
                 String line;
                 while ((line = reader.readLine()) != null) {
                     if (isDataMode) {
                         if (".".equals(line)) {
                             isDataMode = false;
-                            processAndSaveEmail(); // 核心修改：解析并保存
+                            processAndSaveEmail();
                             writer.println("250 OK Message accepted");
                         } else {
-                            dataBuilder.append(line).append("\r\n"); // SMTP 使用 CRLF
+                            dataBuilder.append(line).append("\r\n");
                         }
                         continue;
                     }
@@ -88,6 +99,11 @@ public class SmtpServer {
                         writer.println("250 Hello " + socket.getInetAddress().getHostAddress());
                     } else if (cmd.startsWith("MAIL FROM:")) {
                         sender = extractEmail(line);
+                        // 2. 邮件地址过滤
+                        if (BLACKLIST_EMAILS.contains(sender)) {
+                            writer.println("550 Sender blocked");
+                            return;
+                        }
                         writer.println("250 OK");
                     } else if (cmd.startsWith("RCPT TO:")) {
                         recipients.add(extractEmail(line));
@@ -114,37 +130,44 @@ public class SmtpServer {
 
         private void processAndSaveEmail() {
             if (recipients.isEmpty()) return;
-
             try {
-                // 使用 JavaMail 解析 MIME 内容
                 Session session = Session.getDefaultInstance(new Properties());
                 MimeMessage mimeMessage = new MimeMessage(session,
                         new ByteArrayInputStream(dataBuilder.toString().getBytes(StandardCharsets.UTF_8)));
 
                 String subject = mimeMessage.getSubject();
-                String body = getTextFromMimeMessage(mimeMessage); // 解析正文
 
-                // 投递给所有有效的本地接收者
+                // 递归解析内容
+                StringBuilder textBody = new StringBuilder();
+                List<SavedAttachment> attachments = new ArrayList<>();
+                parseMimeContent(mimeMessage, textBody, attachments);
+
                 for (String recipient : recipients) {
                     userRepository.findByEmail(recipient).ifPresent(user -> {
                         Email email = new Email();
                         email.setSender(sender != null ? sender : "unknown");
                         email.setRecipients(new ArrayList<>(recipients));
                         email.setSubject(subject != null ? subject : "(No Subject)");
-                        email.setBody(body);
+                        email.setBody(textBody.toString()); // 只存文本/HTML正文
                         email.setUser(user);
                         email.setFolderType(Email.FolderType.INBOX);
                         email.setReceivedTime(LocalDateTime.now());
+                        email.setHasAttachment(!attachments.isEmpty());
 
-                        // 简单的附件判断
-                        try {
-                            email.setHasAttachment(mimeMessage.getContent() instanceof MimeMultipart);
-                        } catch (Exception e) {
-                            email.setHasAttachment(false);
+                        // 先保存邮件以获取 ID
+                        Email savedEmail = emailRepository.save(email);
+
+                        // 保存附件关联
+                        for (SavedAttachment att : attachments) {
+                            attachmentService.saveAttachmentFromStream(
+                                    savedEmail,
+                                    new ByteArrayInputStream(att.data), // 需要重新创建流
+                                    att.contentType,
+                                    att.fileName,
+                                    att.data.length
+                            );
                         }
-
-                        emailRepository.save(email);
-                        log.info("Email saved for user: " + recipient);
+                        log.info("Email saved for user: " + recipient + ", attachments: " + attachments.size());
                     });
                 }
             } catch (Exception e) {
@@ -154,39 +177,39 @@ public class SmtpServer {
             }
         }
 
-        // 递归解析 MIME 正文 (支持纯文本和 HTML)
-        private String getTextFromMimeMessage(jakarta.mail.Part part) throws Exception {
-            if (part.isMimeType("text/plain")) {
-                return (String) part.getContent();
-            } else if (part.isMimeType("text/html")) {
-                return (String) part.getContent(); // 优先返回 HTML
-            } else if (part.isMimeType("multipart/*")) {
-                MimeMultipart multipart = (MimeMultipart) part.getContent();
-                StringBuilder result = new StringBuilder();
-                for (int i = 0; i < multipart.getCount(); i++) {
-                    String partText = getTextFromMimeMessage(multipart.getBodyPart(i));
-                    if (partText != null && !partText.isEmpty()) {
-                        return partText; // 找到第一个文本部分即返回
-                    }
-                }
-                return result.toString();
+        // 临时内部类用于暂存附件数据
+        class SavedAttachment {
+            byte[] data;
+            String fileName;
+            String contentType;
+            SavedAttachment(byte[] data, String fileName, String contentType) {
+                this.data = data; this.fileName = fileName; this.contentType = contentType;
             }
-            return null;
         }
 
-        private void resetState() {
-            sender = null;
-            recipients.clear();
-            dataBuilder.setLength(0);
-            isDataMode = false;
+        private void parseMimeContent(Part part, StringBuilder textBody, List<SavedAttachment> attachments) throws Exception {
+            if (Part.ATTACHMENT.equalsIgnoreCase(part.getDisposition()) ||
+                    (part.getFileName() != null && !part.getFileName().isEmpty())) {
+                // 这是一个附件
+                InputStream is = part.getInputStream();
+                byte[] data = is.readAllBytes(); // 简单起见读入内存，大文件建议优化
+                attachments.add(new SavedAttachment(data, part.getFileName(), part.getContentType()));
+            } else if (part.isMimeType("text/*")) {
+                // 这是一个文本正文
+                textBody.append((String) part.getContent()).append("\n");
+            } else if (part.isMimeType("multipart/*")) {
+                Multipart multipart = (Multipart) part.getContent();
+                for (int i = 0; i < multipart.getCount(); i++) {
+                    parseMimeContent(multipart.getBodyPart(i), textBody, attachments);
+                }
+            }
         }
 
+        private void resetState() { sender = null; recipients.clear(); dataBuilder.setLength(0); isDataMode = false; }
         private String extractEmail(String text) {
-            int start = text.indexOf('<');
-            int end = text.indexOf('>');
+            int start = text.indexOf('<'); int end = text.indexOf('>');
             if (start != -1 && end != -1) return text.substring(start + 1, end);
-            String[] parts = text.split(":", 2);
-            return parts.length > 1 ? parts[1].trim() : "";
+            String[] parts = text.split(":", 2); return parts.length > 1 ? parts[1].trim() : "";
         }
     }
 }

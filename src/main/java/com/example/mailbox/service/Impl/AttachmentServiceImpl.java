@@ -10,9 +10,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.UUID;
 
 @Service
@@ -29,31 +31,11 @@ public class AttachmentServiceImpl implements AttachmentService {
     @Override
     public void uploadAttachment(Long emailId, MultipartFile file) {
         Email email = emailRepository.findById(emailId)
-            .orElseThrow(() -> new RuntimeException("邮件不存在"));
-
+                .orElseThrow(() -> new RuntimeException("邮件不存在"));
         try {
-            // 创建上传目录
-            Files.createDirectories(uploadPath);
-
-            // 生成唯一文件名
-            String fileName = UUID.randomUUID() + "_" + file.getOriginalFilename();
-            Path filePath = uploadPath.resolve(fileName);
-
-            // 保存文件
-            file.transferTo(filePath.toFile());
-
-            // 保存附件信息
-            Attachment attachment = new Attachment();
-            attachment.setEmail(email);
-            attachment.setFileName(file.getOriginalFilename());
-            attachment.setFileSize(file.getSize());
-            attachment.setContentType(file.getContentType());
-            attachment.setFilePath(filePath.toString());
-
-            attachmentRepository.save(attachment);
-
+            saveFile(email, file.getInputStream(), file.getContentType(), file.getOriginalFilename(), file.getSize());
         } catch (IOException e) {
-            throw new RuntimeException("文件上传失败", e);
+            throw new RuntimeException("附件上传失败", e);
         }
     }
 
@@ -61,6 +43,39 @@ public class AttachmentServiceImpl implements AttachmentService {
     public void uploadMultipleAttachments(Long emailId, MultipartFile[] files) {
         for (MultipartFile file : files) {
             uploadAttachment(emailId, file);
+        }
+    }
+
+    @Override
+    public void saveAttachmentFromStream(Email email, InputStream inputStream, String contentType, String fileName, long size) {
+        saveFile(email, inputStream, contentType, fileName, size);
+    }
+
+    // 通用保存逻辑
+    private void saveFile(Email email, InputStream inputStream, String contentType, String fileName, long size) {
+        try {
+            if (!Files.exists(uploadPath)) {
+                Files.createDirectories(uploadPath);
+            }
+
+            // 生成安全的文件名
+            String savedFileName = UUID.randomUUID() + "_" + (fileName != null ? fileName : "unknown");
+            Path filePath = uploadPath.resolve(savedFileName);
+
+            // 保存文件
+            Files.copy(inputStream, filePath, StandardCopyOption.REPLACE_EXISTING);
+
+            // 存入数据库
+            Attachment attachment = new Attachment();
+            attachment.setEmail(email);
+            attachment.setFileName(fileName);
+            attachment.setFileSize(size);
+            attachment.setContentType(contentType);
+            attachment.setFilePath(filePath.toString());
+
+            attachmentRepository.save(attachment);
+        } catch (IOException e) {
+            throw new RuntimeException("保存附件文件失败: " + fileName, e);
         }
     }
 }

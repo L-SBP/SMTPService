@@ -1,5 +1,6 @@
 package com.example.mailbox.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore; // 1. 添加导入
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -78,6 +79,7 @@ public class Email {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
+    @JsonIgnore // 2. 添加此注解，忽略 user 字段的序列化
     private Account user;
 
     @Column(name = "created_at")

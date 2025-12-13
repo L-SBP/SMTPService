@@ -6,6 +6,8 @@ import com.example.mailbox.service.EmailService;
 import com.example.mailbox.vo.ApiResponse;
 import com.example.mailbox.vo.Page;
 import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -128,6 +130,8 @@ public class EmailController {
     }
 
     // 邮件请求DTO
+    @Data  // <--- 必须添加这个注解
+    @NoArgsConstructor // 建议也加上无参构造
     @AllArgsConstructor
     public static class EmailRequest {
         private List<String> to;

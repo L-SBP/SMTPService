@@ -2,7 +2,6 @@ package com.example.mailbox.controller;
 
 import com.example.mailbox.dto.AuthRequestDTO;
 import com.example.mailbox.dto.RegisterRequestDTO;
-import com.example.mailbox.entity.Account;
 import com.example.mailbox.service.AuthService;
 import com.example.mailbox.service.TokenService;
 import com.example.mailbox.vo.LoginResponseVO;

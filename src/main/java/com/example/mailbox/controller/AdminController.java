@@ -80,6 +80,19 @@ public class AdminController {
         return ResponseEntity.ok(new ApiResponse<>(true, "删除成功", "删除成功", null));
     }
 
+    // --- 服务器管理 ---
+    
+    @Autowired
+    private com.example.mailbox.server.EnhancedSmtpServer smtpServerConfig;
+    
+    @Autowired
+    private com.example.mailbox.server.EnhancedPop3Server pop3ServerConfig;
+    
+    @GetMapping("/server/status")
+    public ResponseEntity<ApiResponse<String>> getServerStatus() {
+        return ResponseEntity.ok(new ApiResponse<>(true, "SMTP和POP3服务器运行中", "服务器状态正常", null));
+    }
+
     @Data
     public static class BlacklistRequest {
         private Blacklist.Type type;

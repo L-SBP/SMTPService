@@ -12,4 +12,5 @@ public interface EmailService {
     void markAsRead(Long id, String email, Boolean isRead);
     void markAsStarred(Long id, String email, Boolean isStarred);
     void deleteEmail(Long id, String email);
+    Page<Email> searchEmails(String email, String query, int page, int size);
 }

@@ -109,24 +109,24 @@ public class EmailSyncServiceImpl implements EmailSyncService {
     @Override
     @Async
     @Scheduled(fixedRate = 300000) // 每5分钟执行一次
-    public List<ApiResponse<String>> syncAllUsersEmails() {
-        List<ApiResponse<String>> results = new ArrayList<>();
-        
+    public void syncAllUsersEmails() { // 核心修改：返回类型改为 void
+        List<ApiResponse<String>> results = new ArrayList<>(); // 保留结果收集，用于日志统计
+
         List<Account> users = userRepository.findAll();
         log.info("开始批量同步，共有 {} 个用户", users.size());
-        
+
         for (Account user : users) {
             try {
                 ApiResponse<String> result = syncEmails(user);
                 results.add(result);
             } catch (Exception e) {
-                log.error("同步用户 {} 的邮件时发生异常: {}", user.getEmail(), e.getMessage());
-                results.add(new ApiResponse<>(false, null, "同步异常: " + e.getMessage(), null));
+                String errorMsg = "同步用户 " + user.getEmail() + " 的邮件时发生异常: " + e.getMessage();
+                log.error(errorMsg, e); // 打印完整异常栈，便于排查
+                results.add(new ApiResponse<>(false, null, errorMsg, null));
             }
         }
         
         log.info("批量同步完成，共处理 {} 个用户", results.size());
-        return results;
     }
 
     @Override

@@ -25,6 +25,11 @@ public class UserServiceImpl implements UserService, UserDetailsService {
     }
 
     @Override
+    public Account getUserById(Long id) {
+        return userRepository.findById(id).orElse(null);
+    }
+
+    @Override
     public Account save(Account user) {
         return userRepository.save(user);
     }

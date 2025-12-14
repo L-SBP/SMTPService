@@ -27,7 +27,15 @@ public interface EmailRepository extends JpaRepository<Email, Long> {
     // 检查邮件是否已存在
     boolean existsBySenderAndSubjectAndReceivedTime(String sender, String subject, LocalDateTime receivedTime);
 
-    // 搜索邮件
-    @Query("SELECT e FROM Email e WHERE e.user.email = :email AND (LOWER(e.subject) LIKE LOWER(CONCAT('%', :query, '%')) OR LOWER(e.body) LIKE LOWER(CONCAT('%', :query, '%')))")
+    // 改用原生SQL查询（适配MySQL），避免HQL的lower()类型校验问题
+    @Query(value = "SELECT e.* FROM emails e " +
+            "JOIN account u ON e.user_id = u.id " +
+            "WHERE u.email = :email " +
+            "AND (LOWER(e.subject) LIKE CONCAT('%', LOWER(:query), '%') OR LOWER(e.body) LIKE CONCAT('%', LOWER(:query), '%'))",
+            countQuery = "SELECT COUNT(e.id) FROM emails e " +
+                    "JOIN account u ON e.user_id = u.id " +
+                    "WHERE u.email = :email " +
+                    "AND (LOWER(e.subject) LIKE CONCAT('%', LOWER(:query), '%') OR LOWER(e.body) LIKE CONCAT('%', LOWER(:query), '%'))",
+            nativeQuery = true)
     Page<Email> searchByEmailAndContent(@Param("email") String email, @Param("query") String query, Pageable pageable);
 }

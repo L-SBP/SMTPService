@@ -73,6 +73,13 @@ public class EmailServiceImpl implements EmailService {
         emailRepository.save(emailEntity);
     }
 
+    @Override
+    public Page<Email> searchEmails(String email, String query, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        var emails = emailRepository.searchByEmailAndContent(email, query, pageable);
+        return convertToPage(emails);
+    }
+
 
     private Page<Email> convertToPage(org.springframework.data.domain.Page<Email> springPage) {
         return new Page<>(

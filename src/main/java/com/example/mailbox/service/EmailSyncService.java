@@ -1,10 +1,7 @@
 package com.example.mailbox.service;
 
 import com.example.mailbox.entity.Account;
-import com.example.mailbox.entity.Email;
 import com.example.mailbox.vo.ApiResponse;
-
-import java.util.List;
 
 /**
  * 邮件同步服务接口
@@ -21,9 +18,8 @@ public interface EmailSyncService {
     
     /**
      * 同步所有用户的邮件
-     * @return 同步结果列表
      */
-    List<ApiResponse<String>> syncAllUsersEmails();
+    void syncAllUsersEmails();
     
     /**
      * 获取用户的同步状态

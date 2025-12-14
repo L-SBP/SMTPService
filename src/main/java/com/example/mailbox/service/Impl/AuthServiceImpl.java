@@ -7,6 +7,7 @@ import com.example.mailbox.service.AuthService;
 import com.example.mailbox.service.TokenService;
 import com.example.mailbox.util.JwtUtil;
 import com.example.mailbox.vo.LoginResponseVO;
+import com.example.mailbox.vo.UserInfoVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -62,17 +63,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public LoginResponseVO login(String identify, String password) {
-        Optional<Account> accountOpt = userRepository.findByEmail(identify);
-
-        if (accountOpt.isEmpty()) {
-            accountOpt = userRepository.findByUsername(identify);
-        }
-
-        if (accountOpt.isEmpty()) {
-            throw new RuntimeException("用户不存在");
-        }
-
-        Account account = accountOpt.get();
+        Account account = userRepository.
 
         if (!passwordEncoder.matches(password, account.getPassword())) {
             throw new RuntimeException("密码错误");
@@ -84,10 +75,22 @@ public class AuthServiceImpl implements AuthService {
         long expiration = jwtUtil.getExpiration();
         tokenService.storeToken(token, account.getUsername(), expiration);
 
+        // 构建用户信息
+        UserInfoVO userInfoVO = new UserInfoVO();
+        userInfoVO.setId(account.getId());
+        userInfoVO.setUsername(account.getUsername());
+        userInfoVO.setEmail(account.getEmail());
+        userInfoVO.setSignature(account.getSignature());
+        userInfoVO.setIsAdmin(account.getIsAdmin());
+        userInfoVO.setQuotaLimit(account.getQuotaLimit());
+        userInfoVO.setUsedSpace(account.getUsedSpace());
+        userInfoVO.setLastLogin(account.getLastLogin());
+
+        // 构建响应
         LoginResponseVO response = new LoginResponseVO();
         response.setToken(token);
-        response.setEmail(account.getEmail());
-        response.setResult(true);
+        response.setUser(userInfoVO);
+
         return response;
     }
 }

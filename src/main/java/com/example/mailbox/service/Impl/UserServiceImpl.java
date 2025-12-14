@@ -10,6 +10,8 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.Optional;
+
 @Service
 public class UserServiceImpl implements UserService, UserDetailsService {
 
@@ -38,6 +40,20 @@ public class UserServiceImpl implements UserService, UserDetailsService {
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new UsernameNotFoundException("用户不存在: " + email));
+    }
+
+    @Override
+    public Account getUserByIdentifier(String identifier) {
+        Optional<Account> accountOpt = userRepository.findByUsername(identifier);
+
+        if (accountOpt.isEmpty()) {
+            accountOpt = userRepository.findByEmail(identifier);
+        }
+
+        if (accountOpt.isEmpty()) {
+            throw new RuntimeException("用户不存在");
+        }
+        return accountOpt.get();
     }
 
     // 3. 实现修改密码逻辑

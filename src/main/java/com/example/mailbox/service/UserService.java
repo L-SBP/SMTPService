@@ -4,6 +4,7 @@ import com.example.mailbox.entity.Account;
 import org.springframework.security.core.userdetails.UserDetailsService;
 
 public interface UserService extends UserDetailsService {
+    Account getUserByIdentifier(String identifier);
     Account getUserByEmail(String email);
     Account getUserById(Long id);
     Account save(Account user);

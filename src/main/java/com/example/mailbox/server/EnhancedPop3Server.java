@@ -275,15 +275,6 @@ public class EnhancedPop3Server {
                 case "AUTH":
                     handleAuthCommand(commandLine);
                     break;
-                case "USER":
-                    handleUserCommand(arg);
-                    break;
-                case "PASS":
-                    handlePassCommand(arg);
-                    break;
-                case "APOP":
-                    handleApopCommand(commandLine);
-                    break;
                 case "LIST":
                     handleListCommand(arg);
                     break;

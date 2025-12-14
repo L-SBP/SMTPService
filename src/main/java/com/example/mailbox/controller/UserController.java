@@ -2,7 +2,9 @@ package com.example.mailbox.controller;
 
 import com.example.mailbox.entity.Account;
 import com.example.mailbox.service.UserService;
+import com.example.mailbox.util.JwtUtil;
 import com.example.mailbox.vo.ApiResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.AllArgsConstructor;
 import lombok.Data; // 导入 Data
 import lombok.NoArgsConstructor; // 导入 NoArgsConstructor
@@ -19,17 +21,15 @@ public class UserController {
     @Autowired
     private UserService userService;
 
-    @GetMapping("/profile")
-    public ResponseEntity<ApiResponse<Account>> getProfile() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        String email = authentication.getName();
+    @Autowired
+    private JwtUtil jwtUtil;
 
-        Account user = userService.getUserByEmail(email);
-        // 注意：实际项目中通常应该转为 DTO 返回，不返回密码字段，但这里为了演示保持原样
-        // 你可以在 Account 实体密码字段上加 @JsonIgnore (之前 Email 实体里加过)
-        ApiResponse<Account> response = new ApiResponse<>(
-                true, user, "获取用户资料成功", null
-        );
+    @GetMapping("/profile")
+    public ResponseEntity<ApiResponse<Account>> getProfile(HttpServletRequest request) {
+
+        String identifier = jwtUtil.extractUsername(request.getHeader("Authorization"));
+
+        Account currentUser = userService.getUserByEmail(identifier);
 
         return ResponseEntity.ok(response);
     }

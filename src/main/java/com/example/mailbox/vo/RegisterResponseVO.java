@@ -9,5 +9,5 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class RegisterResponseVO {
     private String email;
-    private Boolean Result;
+    private Boolean result;
 }

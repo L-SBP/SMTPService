@@ -1,6 +1,6 @@
 package com.example.mailbox.controller;
 
-import com.example.mailbox.dto.AuthRequestDTO;
+import com.example.mailbox.dto.LoginRequestDTO;
 import com.example.mailbox.dto.RegisterRequestDTO;
 import com.example.mailbox.service.AuthService;
 import com.example.mailbox.service.TokenService;
@@ -21,7 +21,7 @@ public class AuthController {
     private TokenService tokenService;
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody AuthRequestDTO request) {
+    public ResponseEntity<?> login(@RequestBody LoginRequestDTO request) {
         try {
             LoginResponseVO response = authService.login(request.getIdentifier(), request.getPassword());
             return ResponseEntity.ok(response);

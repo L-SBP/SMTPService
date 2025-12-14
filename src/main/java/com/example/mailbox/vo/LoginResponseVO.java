@@ -8,7 +8,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class LoginResponseVO {
-    private String token;
-    private String email;
-    private Boolean Result;
+    private String token;  // JWT Token
+    private UserInfoVO user;  // 用户信息
 }

@@ -7,6 +7,7 @@ import com.example.mailbox.repository.UserRepository;
 import com.example.mailbox.vo.ApiResponse;
 import com.example.mailbox.vo.Page;
 import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -19,6 +20,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin")
 @PreAuthorize("hasRole('ADMIN')") // 仅管理员可访问
+@Slf4j
 public class AdminController {
 
     @Autowired private UserRepository userRepository;
@@ -29,6 +31,7 @@ public class AdminController {
     @GetMapping("/users")
     public ResponseEntity<ApiResponse<Page<Account>>> getAllUsers(@RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+        log.info("管理员查询用户列表，页码：{}，大小：{}", page, size);
         Pageable pageable = PageRequest.of(page, size);
         var usersPage = userRepository.findAll(pageable);
 
@@ -41,15 +44,18 @@ public class AdminController {
                 usersPage.isFirst(),
                 usersPage.isLast()
         );
+        log.info("成功获取用户列表，总数：{}", usersPage.getTotalElements());
         return ResponseEntity.ok(new ApiResponse<>(true, responsePage, "获取用户列表成功", null));
     }
 
     @PutMapping("/users/{id}/status")
     public ResponseEntity<ApiResponse<String>> updateUserStatus(@PathVariable Long id, @RequestParam Boolean enabled) {
+        log.info("管理员修改用户状态，用户ID：{}，启用状态：{}", id, enabled);
         return userRepository.findById(id).map(user -> {
             user.setEnabled(enabled);
             userRepository.save(user);
             String status = enabled ? "解封" : "封禁";
+            log.info("用户状态修改成功，用户ID：{}，操作：{}", id, status);
             return ResponseEntity.ok(new ApiResponse<>(true, "用户已" + status, "操作成功", null));
         }).orElse(ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "用户不存在", null)));
     }
@@ -58,12 +64,17 @@ public class AdminController {
 
     @GetMapping("/blacklist")
     public ResponseEntity<ApiResponse<List<Blacklist>>> getBlacklist() {
-        return ResponseEntity.ok(new ApiResponse<>(true, blacklistRepository.findAll(), "获取黑名单成功", null));
+        log.info("管理员查询黑名单列表");
+        List<Blacklist> blacklist = blacklistRepository.findAll();
+        log.info("成功获取黑名单，记录数：{}", blacklist.size());
+        return ResponseEntity.ok(new ApiResponse<>(true, blacklist, "获取黑名单成功", null));
     }
 
     @PostMapping("/blacklist")
     public ResponseEntity<ApiResponse<Blacklist>> addToBlacklist(@RequestBody BlacklistRequest request) {
+        log.info("管理员添加黑名单，类型：{}，值：{}", request.getType(), request.getValue());
         if (blacklistRepository.existsByTypeAndValue(request.getType(), request.getValue())) {
+            log.warn("黑名单记录已存在，类型：{}，值：{}", request.getType(), request.getValue());
             return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "该记录已存在", null));
         }
 
@@ -71,12 +82,16 @@ public class AdminController {
         blacklist.setType(request.getType());
         blacklist.setValue(request.getValue());
 
-        return ResponseEntity.ok(new ApiResponse<>(true, blacklistRepository.save(blacklist), "添加成功", null));
+        Blacklist saved = blacklistRepository.save(blacklist);
+        log.info("黑名单添加成功，ID：{}", saved.getId());
+        return ResponseEntity.ok(new ApiResponse<>(true, saved, "添加成功", null));
     }
 
     @DeleteMapping("/blacklist/{id}")
     public ResponseEntity<ApiResponse<String>> removeFromBlacklist(@PathVariable Long id) {
+        log.info("管理员删除黑名单，ID：{}", id);
         blacklistRepository.deleteById(id);
+        log.info("黑名单删除成功，ID：{}", id);
         return ResponseEntity.ok(new ApiResponse<>(true, "删除成功", "删除成功", null));
     }
 
@@ -102,7 +117,15 @@ public class AdminController {
     @PostMapping("/server/smtp/start")
     public ResponseEntity<ApiResponse<String>> startSmtpServer() {
         try {
+            if (smtpServerConfig.isRunning()) {
+                log.warn("SMTP服务器已在运行中，无需重复启动");
+                return ResponseEntity.badRequest().body(
+                    new ApiResponse<>(false, null, "SMTP服务器已在运行中", null)
+                );
+            }
+            
             smtpServerConfig.start();
+            log.info("SMTP服务器启动成功");
             return ResponseEntity.ok(new ApiResponse<>(true, "SMTP服务器启动成功", "服务器已启动", null));
         } catch (Exception e) {
             log.error("启动SMTP服务器失败", e);
@@ -113,7 +136,15 @@ public class AdminController {
     @PostMapping("/server/smtp/stop")
     public ResponseEntity<ApiResponse<String>> stopSmtpServer() {
         try {
+            if (!smtpServerConfig.isRunning()) {
+                log.warn("SMTP服务器未在运行，无需停止");
+                return ResponseEntity.badRequest().body(
+                    new ApiResponse<>(false, null, "SMTP服务器未在运行", null)
+                );
+            }
+            
             smtpServerConfig.stop();
+            log.info("SMTP服务器停止成功");
             return ResponseEntity.ok(new ApiResponse<>(true, "SMTP服务器停止成功", "服务器已停止", null));
         } catch (Exception e) {
             log.error("停止SMTP服务器失败", e);
@@ -124,7 +155,15 @@ public class AdminController {
     @PostMapping("/server/pop3/start")
     public ResponseEntity<ApiResponse<String>> startPop3Server() {
         try {
+            if (pop3ServerConfig.isRunning()) {
+                log.warn("POP3服务器已在运行中，无需重复启动");
+                return ResponseEntity.badRequest().body(
+                    new ApiResponse<>(false, null, "POP3服务器已在运行中", null)
+                );
+            }
+            
             pop3ServerConfig.start();
+            log.info("POP3服务器启动成功");
             return ResponseEntity.ok(new ApiResponse<>(true, "POP3服务器启动成功", "服务器已启动", null));
         } catch (Exception e) {
             log.error("启动POP3服务器失败", e);
@@ -135,7 +174,15 @@ public class AdminController {
     @PostMapping("/server/pop3/stop")
     public ResponseEntity<ApiResponse<String>> stopPop3Server() {
         try {
+            if (!pop3ServerConfig.isRunning()) {
+                log.warn("POP3服务器未在运行，无需停止");
+                return ResponseEntity.badRequest().body(
+                    new ApiResponse<>(false, null, "POP3服务器未在运行", null)
+                );
+            }
+            
             pop3ServerConfig.stop();
+            log.info("POP3服务器停止成功");
             return ResponseEntity.ok(new ApiResponse<>(true, "POP3服务器停止成功", "服务器已停止", null));
         } catch (Exception e) {
             log.error("停止POP3服务器失败", e);

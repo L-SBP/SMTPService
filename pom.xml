@@ -53,12 +53,6 @@
       <scope>runtime</scope>
     </dependency>
 
-    <!-- 安全验证相关依赖 -->
-    <!-- Spring Security -->
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-security</artifactId>
-    </dependency>
     <!-- JWT 令牌支持 -->
     <dependency>
       <groupId>io.jsonwebtoken</groupId>

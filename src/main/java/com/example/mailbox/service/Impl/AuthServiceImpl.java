@@ -63,28 +63,33 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public LoginResponseVO login(String identify, String password) {
-        Account account = userRepository.
+        Optional<Account> account = userRepository.findByIdentifier(identify);
 
-        if (!passwordEncoder.matches(password, account.getPassword())) {
+        if (account.isEmpty()) {
+            throw new RuntimeException("用户不存在");
+        }
+        Account user = account.get();
+
+        if (!passwordEncoder.matches(password, user.getPassword())) {
             throw new RuntimeException("密码错误");
         }
 
-        String token = jwtUtil.generateToken(account);
+        String token = jwtUtil.generateToken(user);
 
         // 将Token存储到Redis
         long expiration = jwtUtil.getExpiration();
-        tokenService.storeToken(token, account.getUsername(), expiration);
+        tokenService.storeToken(token, user.getUsername(), expiration);
 
         // 构建用户信息
         UserInfoVO userInfoVO = new UserInfoVO();
-        userInfoVO.setId(account.getId());
-        userInfoVO.setUsername(account.getUsername());
-        userInfoVO.setEmail(account.getEmail());
-        userInfoVO.setSignature(account.getSignature());
-        userInfoVO.setIsAdmin(account.getIsAdmin());
-        userInfoVO.setQuotaLimit(account.getQuotaLimit());
-        userInfoVO.setUsedSpace(account.getUsedSpace());
-        userInfoVO.setLastLogin(account.getLastLogin());
+        userInfoVO.setId(user.getId());
+        userInfoVO.setUsername(user.getUsername());
+        userInfoVO.setEmail(user.getEmail());
+        userInfoVO.setSignature(user.getSignature());
+        userInfoVO.setIsAdmin(user.getIsAdmin());
+        userInfoVO.setQuotaLimit(user.getQuotaLimit());
+        userInfoVO.setUsedSpace(user.getUsedSpace());
+        userInfoVO.setLastLogin(user.getLastLogin());
 
         // 构建响应
         LoginResponseVO response = new LoginResponseVO();

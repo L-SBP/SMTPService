@@ -14,14 +14,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * 管理员控制器 - 处理管理员相关操作
+ * 使用自定义 JWT 认证，不依赖 Spring Security
+ */
 @RestController
 @RequestMapping("/api/admin")
-@PreAuthorize("hasRole('ADMIN')") // 仅管理员可访问
 @Slf4j
 public class AdminController {
 

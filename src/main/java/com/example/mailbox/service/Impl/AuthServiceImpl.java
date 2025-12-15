@@ -9,7 +9,6 @@ import com.example.mailbox.util.JwtUtil;
 import com.example.mailbox.vo.LoginResponseVO;
 import com.example.mailbox.vo.UserInfoVO;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import com.example.mailbox.vo.RegisterResponseVO;
@@ -27,9 +26,6 @@ public class AuthServiceImpl implements AuthService {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
-
-    @Autowired
-    private AuthenticationManager authenticationManager;
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -74,7 +70,7 @@ public class AuthServiceImpl implements AuthService {
             throw new RuntimeException("密码错误");
         }
 
-        String token = jwtUtil.generateToken(user);
+        String token = jwtUtil.generateToken(user.getUsername());
 
         // 将Token存储到Redis
         long expiration = jwtUtil.getExpiration();

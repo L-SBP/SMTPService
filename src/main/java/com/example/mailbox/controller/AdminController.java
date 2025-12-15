@@ -88,9 +88,67 @@ public class AdminController {
     @Autowired
     private com.example.mailbox.server.EnhancedPop3Server pop3ServerConfig;
     
+    @Autowired
+    private com.example.mailbox.service.EmailProtocolService emailProtocolService;
+    
     @GetMapping("/server/status")
     public ResponseEntity<ApiResponse<String>> getServerStatus() {
-        return ResponseEntity.ok(new ApiResponse<>(true, "SMTP和POP3服务器运行中", "服务器状态正常", null));
+        String smtpStatus = smtpServerConfig.isRunning() ? "SMTP服务器运行中" : "SMTP服务器已停止";
+        String pop3Status = pop3ServerConfig.isRunning() ? "POP3服务器运行中" : "POP3服务器已停止";
+        String status = smtpStatus + "，" + pop3Status;
+        return ResponseEntity.ok(new ApiResponse<>(true, status, "服务器状态正常", null));
+    }
+
+    @PostMapping("/server/smtp/start")
+    public ResponseEntity<ApiResponse<String>> startSmtpServer() {
+        try {
+            smtpServerConfig.start();
+            return ResponseEntity.ok(new ApiResponse<>(true, "SMTP服务器启动成功", "服务器已启动", null));
+        } catch (Exception e) {
+            log.error("启动SMTP服务器失败", e);
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "启动SMTP服务器失败: " + e.getMessage(), null));
+        }
+    }
+
+    @PostMapping("/server/smtp/stop")
+    public ResponseEntity<ApiResponse<String>> stopSmtpServer() {
+        try {
+            smtpServerConfig.stop();
+            return ResponseEntity.ok(new ApiResponse<>(true, "SMTP服务器停止成功", "服务器已停止", null));
+        } catch (Exception e) {
+            log.error("停止SMTP服务器失败", e);
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "停止SMTP服务器失败: " + e.getMessage(), null));
+        }
+    }
+
+    @PostMapping("/server/pop3/start")
+    public ResponseEntity<ApiResponse<String>> startPop3Server() {
+        try {
+            pop3ServerConfig.start();
+            return ResponseEntity.ok(new ApiResponse<>(true, "POP3服务器启动成功", "服务器已启动", null));
+        } catch (Exception e) {
+            log.error("启动POP3服务器失败", e);
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "启动POP3服务器失败: " + e.getMessage(), null));
+        }
+    }
+
+    @PostMapping("/server/pop3/stop")
+    public ResponseEntity<ApiResponse<String>> stopPop3Server() {
+        try {
+            pop3ServerConfig.stop();
+            return ResponseEntity.ok(new ApiResponse<>(true, "POP3服务器停止成功", "服务器已停止", null));
+        } catch (Exception e) {
+            log.error("停止POP3服务器失败", e);
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "停止POP3服务器失败: " + e.getMessage(), null));
+        }
+    }
+
+    @GetMapping("/server/stats")
+    public ResponseEntity<ApiResponse<String>> getServerStats() {
+        String smtpStats = smtpServerConfig.getStats();
+        String pop3Stats = pop3ServerConfig.getStats();
+        String stats = smtpStats + "；" + pop3Stats;
+        return ResponseEntity.ok(new ApiResponse<>(true, stats, "服务器统计信息", null));
     }
 
     @Data

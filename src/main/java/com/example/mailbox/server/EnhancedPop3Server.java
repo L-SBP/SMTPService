@@ -154,6 +154,33 @@ public class EnhancedPop3Server {
             throw new RuntimeException("POP3服务器启动失败", e);
         }
     }
+
+    /**
+     * 手动启动POP3服务器
+     * 用于管理员通过API控制服务器启停
+     */
+    public void startServer() {
+        if (running) {
+            log.warn("POP3服务器已在运行中");
+            return;
+        }
+        start();
+    }
+
+    /**
+     * 手动停止POP3服务器
+     * 用于管理员通过API控制服务器启停
+     */
+    public void stopServer() {
+        stop();
+    }
+
+    /**
+     * 检查服务器是否正在运行
+     */
+    public boolean isRunning() {
+        return running && serverSocket != null && !serverSocket.isClosed();
+    }
     
     /**
      * 检查客户端 IP 是否在黑名单中
@@ -317,20 +344,35 @@ public class EnhancedPop3Server {
                 return;
             }
             
-            // 提示客户端发送JWT
-            sendResponse("+OK Send JWT token");
+            // 使用标准的USER/PASS流程，但密码是JWT token
+            sendResponse("+OK Send username");
             
-            // 读取客户端的JWT
+            // 读取客户端的用户名
+            String username = in.readLine();
+            if (username == null || username.trim().isEmpty()) {
+                sendResponse("-ERR Username empty");
+                return;
+            }
+            
+            sendResponse("+OK Send JWT token as password");
+            
+            // 读取客户端的JWT（作为密码）
             String jwt = in.readLine();
-            if (jwt == null || jwt.isEmpty()) {
+            if (jwt == null || jwt.trim().isEmpty()) {
                 sendResponse("-ERR JWT token empty");
                 return;
             }
             
             // 校验JWT
-            String username = jwtUtil.extractUsername(jwt);
-            if (username == null || !jwtUtil.validateToken(jwt, username)) {
+            String tokenUsername = jwtUtil.extractUsername(jwt);
+            if (tokenUsername == null || !jwtUtil.validateToken(jwt, tokenUsername)) {
                 sendResponse("-ERR Invalid JWT (expired/fake)");
+                return;
+            }
+            
+            // 检查用户名是否匹配
+            if (!tokenUsername.equals(username)) {
+                sendResponse("-ERR Username mismatch");
                 return;
             }
             

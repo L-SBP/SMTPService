@@ -160,6 +160,33 @@ public class EnhancedSmtpServer {
             throw new RuntimeException("SMTP服务器启动失败", e);
         }
     }
+
+    /**
+     * 手动启动SMTP服务器
+     * 用于管理员通过API控制服务器启停
+     */
+    public void startServer() {
+        if (running) {
+            log.warn("SMTP服务器已在运行中");
+            return;
+        }
+        start();
+    }
+
+    /**
+     * 手动停止SMTP服务器
+     * 用于管理员通过API控制服务器启停
+     */
+    public void stopServer() {
+        stop();
+    }
+
+    /**
+     * 检查服务器是否正在运行
+     */
+    public boolean isRunning() {
+        return running && serverSocket != null && !serverSocket.isClosed();
+    }
     
     /**
      * 检查客户端 IP 是否在黑名单中
@@ -388,7 +415,15 @@ public class EnhancedSmtpServer {
                 return;
             }
             
-            writer.println("334 Send JWT token");
+            // 使用标准的AUTH LOGIN流程，但密码是JWT token
+            writer.println("334 VXNlcm5hbWU6"); // "Username:" base64编码
+            String username = reader.readLine();
+            if (username == null || username.trim().isEmpty()) {
+                writer.println("501 Syntax error in parameters or arguments");
+                return;
+            }
+            
+            writer.println("334 UGFzc3dvcmQ6"); // "Password:" base64编码
             String jwt = reader.readLine();
             if (jwt == null || jwt.trim().isEmpty()) {
                 writer.println("501 Syntax error in parameters or arguments");
@@ -396,10 +431,17 @@ public class EnhancedSmtpServer {
             }
             
             // 校验JWT
-            String username = jwtUtil.extractUsername(jwt);
-            if (username == null || !jwtUtil.validateToken(jwt, username)) {
+            String tokenUsername = jwtUtil.extractUsername(jwt);
+            if (tokenUsername == null || !jwtUtil.validateToken(jwt, tokenUsername)) {
                 writer.println("535 Authentication credentials invalid");
                 saveLog(SystemLog.LogType.SMTP, clientIp, "AUTH", "Invalid JWT", "FAILURE");
+                return;
+            }
+            
+            // 检查用户名是否匹配
+            if (!tokenUsername.equals(username)) {
+                writer.println("535 Authentication credentials invalid");
+                saveLog(SystemLog.LogType.SMTP, clientIp, "AUTH", "Username mismatch", "FAILURE");
                 return;
             }
             

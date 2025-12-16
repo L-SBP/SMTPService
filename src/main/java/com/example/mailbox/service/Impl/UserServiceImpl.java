@@ -19,6 +19,7 @@ public class UserServiceImpl implements UserService, UserDetailsService {
     private UserRepository userRepository;
 
     @Autowired
+    @org.springframework.context.annotation.Lazy
     private PasswordEncoder passwordEncoder; // 注入 PasswordEncoder
 
     @Override

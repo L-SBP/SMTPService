@@ -18,6 +18,10 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+import com.example.mailbox.util.JwtUtil;
+import com.example.mailbox.service.TokenService;
+import java.util.stream.Collectors;
+
 /**
  * 管理员控制器 - 处理管理员相关操作
  * 使用自定义 JWT 认证，不依赖 Spring Security
@@ -29,8 +33,55 @@ public class AdminController {
 
     @Autowired private UserRepository userRepository;
     @Autowired private BlacklistRepository blacklistRepository;
+    @Autowired private JwtUtil jwtUtil;
+    @Autowired private TokenService tokenService;
 
     // --- 用户管理 ---
+
+    @PostMapping("/users")
+    public ResponseEntity<ApiResponse<Account>> createUser(@RequestBody CreateUserRequest request) {
+        log.info("管理员创建用户，邮箱：{}", request.getEmail());
+        if (userRepository.existsByEmail(request.getEmail())) {
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "邮箱已存在", null));
+        }
+
+        Account newUser = new Account();
+        newUser.setUsername(request.getUsername());
+        newUser.setEmail(request.getEmail());
+        newUser.setPassword(request.getPassword());
+        newUser.setEnabled(true);
+        newUser.setIsAdmin(false);
+        // 默认配额 100MB
+        newUser.setQuotaLimit(100.0);
+        newUser.setUsedSpace(0.0);
+
+        Account savedUser = userRepository.save(newUser);
+        log.info("用户创建成功，ID：{}", savedUser.getId());
+        return ResponseEntity.ok(new ApiResponse<>(true, savedUser, "用户创建成功", null));
+    }
+    
+    @DeleteMapping("/users/{id}")
+    public ResponseEntity<ApiResponse<String>> deleteUser(@PathVariable Long id) {
+        log.info("管理员删除用户，ID：{}", id);
+        if (!userRepository.existsById(id)) {
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "用户不存在", null));
+        }
+        userRepository.deleteById(id);
+        log.info("用户删除成功，ID：{}", id);
+        return ResponseEntity.ok(new ApiResponse<>(true, "用户已删除", "删除成功", null));
+    }
+
+    @PutMapping("/users/{id}/role")
+    public ResponseEntity<ApiResponse<String>> updateUserRole(@PathVariable Long id, @RequestParam Boolean isAdmin) {
+        log.info("管理员修改用户权限，用户ID：{}，是否管理员：{}", id, isAdmin);
+        return userRepository.findById(id).map(user -> {
+            user.setIsAdmin(isAdmin);
+            userRepository.save(user);
+            String role = isAdmin ? "管理员" : "普通用户";
+            log.info("用户权限修改成功，用户ID：{}，新角色：{}", id, role);
+            return ResponseEntity.ok(new ApiResponse<>(true, "用户角色已更新为" + role, "操作成功", null));
+        }).orElse(ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "用户不存在", null)));
+    }
 
     @GetMapping("/users")
     public ResponseEntity<ApiResponse<Page<Account>>> getAllUsers(@RequestParam(defaultValue = "0") int page,
@@ -202,9 +253,77 @@ public class AdminController {
         return ResponseEntity.ok(new ApiResponse<>(true, stats, "服务器统计信息", null));
     }
 
+    // --- 邮件群发 ---
+
+    @PostMapping("/emails/broadcast")
+    public ResponseEntity<ApiResponse<String>> broadcastEmail(@RequestBody BroadcastRequest request) {
+        log.info("管理员群发邮件，主题：{}", request.getSubject());
+        
+        try {
+            // 1. 获取所有有效用户邮箱
+            List<String> recipients = userRepository.findAll().stream()
+                    .filter(Account::getEnabled)
+                    .map(Account::getEmail)
+                    .collect(Collectors.toList());
+            
+            if (recipients.isEmpty()) {
+                return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "没有可用的收件人", null));
+            }
+            
+            // 2. 准备发送者凭证 (模拟 admin@mb.com)
+            String senderEmail = "admin@mb.com";
+            String token = jwtUtil.generateToken(senderEmail);
+            tokenService.storeToken(token, senderEmail, jwtUtil.getExpiration());
+            
+            // 3. 发送邮件
+            int successCount = 0;
+            int failureCount = 0;
+            
+            for (String recipient : recipients) {
+                try {
+                    boolean success = emailProtocolService.sendEmail(
+                            senderEmail, 
+                            token, 
+                            java.util.Collections.singletonList(recipient), 
+                            request.getSubject(), 
+                            request.getContent(),
+                            "127.0.0.1", 
+                            25, 
+                            false
+                    );
+                    if (success) successCount++; else failureCount++;
+                } catch (Exception e) {
+                    log.error("Failed to send broadcast to " + recipient, e);
+                    failureCount++;
+                }
+            }
+            
+            return ResponseEntity.ok(new ApiResponse<>(true, 
+                    String.format("发送完成: 成功 %d, 失败 %d", successCount, failureCount), 
+                    "群发完成", null));
+            
+        } catch (Exception e) {
+            log.error("群发邮件失败", e);
+            return ResponseEntity.status(500).body(new ApiResponse<>(false, null, "群发邮件失败: " + e.getMessage(), null));
+        }
+    }
+
+    @Data
+    public static class BroadcastRequest {
+        private String subject;
+        private String content;
+    }
+
     @Data
     public static class BlacklistRequest {
         private Blacklist.Type type;
         private String value;
+    }
+
+    @Data
+    public static class CreateUserRequest {
+        private String username;
+        private String email;
+        private String password;
     }
 }

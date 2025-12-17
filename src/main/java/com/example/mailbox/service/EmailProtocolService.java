@@ -26,13 +26,16 @@ public interface EmailProtocolService {
     /**
      * 使用SMTP协议发送邮件
      * @param senderEmail 发件人邮箱
-     * @param password 发件人密码
+     * @param password 发件人密码（或Token）
+     * @param recipients 收件人列表
+     * @param subject 邮件主题
+     * @param content 邮件内容
      * @param host SMTP服务器地址
      * @param port SMTP服务器端口
      * @param ssl 是否使用SSL
      * @return 发送结果
      */
-    boolean sendEmail(String senderEmail, String password, String host, int port, boolean ssl);
+    boolean sendEmail(String senderEmail, String password, List<String> recipients, String subject, String content, String host, int port, boolean ssl);
     
     /**
      * 获取POP3服务器配置

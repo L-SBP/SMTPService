@@ -390,7 +390,7 @@ public class EnhancedSmtpServer {
             writer.println("250-" + smtpHost + " Hello " + hostname + " [" + clientIp + "]");
             writer.println("250-SIZE " + maxMessageSize);
             writer.println("250-8BITMIME");
-            writer.println("250-AUTH JWT");
+            writer.println("250-AUTH LOGIN PLAIN");
             if (enableStartTls) {
                 writer.println("250-STARTTLS");
             }
@@ -410,26 +410,83 @@ public class EnhancedSmtpServer {
 
         private void handleAuth(String line) throws IOException {
             String[] parts = line.trim().split("\\s+");
-            if (parts.length < 2 || !"JWT".equalsIgnoreCase(parts[1])) {
+            if (parts.length < 2) {
                 writer.println("504 Unrecognized authentication type");
                 return;
             }
             
-            // 使用标准的AUTH LOGIN流程，但密码是JWT token
+            String authType = parts[1].toUpperCase();
+            
+            if ("LOGIN".equals(authType)) {
+                handleAuthLogin();
+            } else if ("PLAIN".equals(authType)) {
+                handleAuthPlain(parts.length > 2 ? parts[2] : null);
+            } else {
+                writer.println("504 Unrecognized authentication type");
+            }
+        }
+        
+        private void handleAuthLogin() throws IOException {
+            // AUTH LOGIN 流程
             writer.println("334 VXNlcm5hbWU6"); // "Username:" base64编码
-            String username = reader.readLine();
-            if (username == null || username.trim().isEmpty()) {
-                writer.println("501 Syntax error in parameters or arguments");
+            String usernameBase64 = reader.readLine();
+            if (usernameBase64 == null) {
                 return;
             }
             
             writer.println("334 UGFzc3dvcmQ6"); // "Password:" base64编码
-            String jwt = reader.readLine();
-            if (jwt == null || jwt.trim().isEmpty()) {
-                writer.println("501 Syntax error in parameters or arguments");
+            String jwtBase64 = reader.readLine();
+            if (jwtBase64 == null) {
                 return;
             }
             
+            try {
+                // Base64 解码
+                String username = new String(java.util.Base64.getDecoder().decode(usernameBase64), StandardCharsets.UTF_8);
+                String jwt = new String(java.util.Base64.getDecoder().decode(jwtBase64), StandardCharsets.UTF_8);
+                
+                authenticate(username, jwt);
+                
+            } catch (IllegalArgumentException e) {
+                writer.println("501 Syntax error in parameters or arguments");
+            }
+        }
+        
+        private void handleAuthPlain(String initialResponse) throws IOException {
+            String credentials;
+            if (initialResponse != null) {
+                credentials = initialResponse;
+            } else {
+                writer.println("334"); // 等待客户端发送认证信息
+                credentials = reader.readLine();
+            }
+            
+            if (credentials == null) {
+                return;
+            }
+            
+            try {
+                // PLAIN 格式: authorization-id\0authentication-id\0passwd
+                byte[] decoded = java.util.Base64.getDecoder().decode(credentials);
+                String decodedStr = new String(decoded, StandardCharsets.UTF_8);
+                String[] parts = decodedStr.split("\0");
+                
+                if (parts.length < 3) {
+                    writer.println("501 Syntax error in parameters or arguments");
+                    return;
+                }
+                
+                String username = parts[1]; // authentication-id
+                String jwt = parts[2]; // passwd
+                
+                authenticate(username, jwt);
+                
+            } catch (IllegalArgumentException e) {
+                writer.println("501 Syntax error in parameters or arguments");
+            }
+        }
+        
+        private void authenticate(String username, String jwt) {
             // 校验JWT
             String tokenUsername = jwtUtil.extractUsername(jwt);
             if (tokenUsername == null || !jwtUtil.validateToken(jwt, tokenUsername)) {

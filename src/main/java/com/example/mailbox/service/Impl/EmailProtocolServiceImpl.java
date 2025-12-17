@@ -88,7 +88,7 @@ public class EmailProtocolServiceImpl implements EmailProtocolService {
 
 
     @Override
-    public boolean sendEmail(String senderEmail, String password, String host, int port, boolean ssl) {
+    public boolean sendEmail(String senderEmail, String password, List<String> recipients, String subject, String content, String host, int port, boolean ssl) {
         try {
             // 配置SMTP属性
             Properties props = new Properties();
@@ -116,27 +116,22 @@ public class EmailProtocolServiceImpl implements EmailProtocolService {
             // 创建邮件
             MimeMessage message = new MimeMessage(session);
             message.setFrom(new InternetAddress(senderEmail));
-            message.setRecipients(Message.RecipientType.TO, InternetAddress.parse("target@mb.com"));
-            message.setSubject("Test Email");
-            message.setText("This is a test email.");
-
-            // SMTP协议交互流程：
-            // 1. 客户端连接到服务器的25端口
-            // 2. 服务器返回状态码220，表示服务已就绪
-            // 3. 客户端发送HELO或EHLO命令，告知服务器自己的域名
-            // 4. 服务器返回状态码250，表示命令成功
-            // 5. 客户端发送MAIL FROM命令，指定发件人邮箱
-            // 6. 客户端发送RCPT TO命令，指定收件人邮箱
-            // 7. 客户端发送DATA命令，开始输入邮件内容
-            // 8. 客户端发送邮件正文
-            // 9. 客户端用单独一行的句点表示邮件输入结束
-            // 10. 服务器返回状态码250，表示邮件接收成功
-            // 11. 客户端发送QUIT命令，请求关闭连接
-            // 12. 服务器返回状态码221，表示连接已关闭
+            
+            // 设置收件人
+            if (recipients != null && !recipients.isEmpty()) {
+                Address[] addresses = new Address[recipients.size()];
+                for (int i = 0; i < recipients.size(); i++) {
+                    addresses[i] = new InternetAddress(recipients.get(i));
+                }
+                message.setRecipients(Message.RecipientType.TO, addresses);
+            }
+            
+            message.setSubject(subject);
+            message.setText(content, "UTF-8");
 
             // 发送邮件
             Transport.send(message);
-            log.info("邮件发送成功: {} -> target@mb.com", senderEmail);
+            log.info("邮件发送成功: {} -> {}", senderEmail, recipients);
 
             return true;
 

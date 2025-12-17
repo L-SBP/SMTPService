@@ -38,4 +38,6 @@ public interface EmailRepository extends JpaRepository<Email, Long> {
                     "AND (LOWER(e.subject) LIKE CONCAT('%', LOWER(:query), '%') OR LOWER(e.body) LIKE CONCAT('%', LOWER(:query), '%'))",
             nativeQuery = true)
     Page<Email> searchByEmailAndContent(@Param("email") String email, @Param("query") String query, Pageable pageable);
+
+    List<Email> findByUserEmailAndFolderType(String email, FolderType folderType);
 }

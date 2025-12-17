@@ -41,6 +41,10 @@ public class AuthServiceImpl implements AuthService {
         user.setUsername(registerRequestDTO.getEmail());
         user.setEmail(registerRequestDTO.getEmail());
         user.setPassword(registerRequestDTO.getPassword()); // 不再加密
+        user.setIsAdmin(false); // 默认非管理员
+        user.setEnabled(true);  // 默认启用
+        user.setQuotaLimit(100.0); // 默认配额100MB
+        user.setUsedSpace(0.0);
 
         // 保存用户
         Account savedUser = userRepository.save(user);
@@ -61,6 +65,11 @@ public class AuthServiceImpl implements AuthService {
             throw new RuntimeException("用户不存在");
         }
         Account user = account.get();
+
+        // 检查用户是否被禁用
+        if (Boolean.FALSE.equals(user.getEnabled())) {
+            throw new RuntimeException("账号已被禁用，请联系管理员");
+        }
 
         if (!password.equals(user.getPassword())) { // 不再使用加密比较
             throw new RuntimeException("密码错误");

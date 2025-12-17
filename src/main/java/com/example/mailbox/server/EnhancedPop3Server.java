@@ -386,6 +386,11 @@ public class EnhancedPop3Server {
             authenticated = true;
             user = username;
             state = Pop3State.TRANSACTION;
+            
+            // 加载邮件列表
+            messageList = emailRepository.findByUserEmailAndFolderType(user, Email.FolderType.INBOX);
+            log.info("User {} logged in, loaded {} messages", user, messageList.size());
+            
             sendResponse("+OK JWT authenticated, welcome " + username);
             saveLog(SystemLog.LogType.POP3, username, "AUTH", "JWT authentication successful", "SUCCESS");
         }
@@ -416,13 +421,41 @@ public class EnhancedPop3Server {
                 return;
             }
             
-            // 简单密码验证（在实际应用中应该使用加密密码）
-            // 这里为了演示，我们假设密码验证通过
-            authenticated = true;
-            user = pendingUsername;
-            state = Pop3State.TRANSACTION;
-            sendResponse("+OK Pass accepted");
-            saveLog(SystemLog.LogType.POP3, user, "AUTH", "Password authentication successful", "SUCCESS");
+            try {
+                // 将密码视为JWT Token进行验证
+                String jwt = password;
+                String tokenUsername = jwtUtil.extractUsername(jwt);
+                
+                if (tokenUsername == null || !jwtUtil.validateToken(jwt, tokenUsername)) {
+                    sendResponse("-ERR Invalid credentials");
+                    return;
+                }
+                
+                if (!tokenUsername.equals(pendingUsername)) {
+                    sendResponse("-ERR Username mismatch");
+                    return;
+                }
+                
+                if (!tokenService.hasToken(jwt)) {
+                    sendResponse("-ERR Token expired or invalid");
+                    return;
+                }
+                
+                authenticated = true;
+                user = pendingUsername;
+                state = Pop3State.TRANSACTION;
+                
+                // 加载邮件列表
+                messageList = emailRepository.findByUserEmailAndFolderType(user, Email.FolderType.INBOX);
+                log.info("User {} logged in via PASS, loaded {} messages", user, messageList.size());
+                
+                sendResponse("+OK Pass accepted");
+                saveLog(SystemLog.LogType.POP3, user, "AUTH", "Password authentication successful", "SUCCESS");
+                
+            } catch (Exception e) {
+                log.warn("POP3 PASS auth failed for user {}: {}", pendingUsername, e.getMessage());
+                sendResponse("-ERR Authentication failed");
+            }
         }
         
         private void handleApopCommand(String commandLine) throws IOException {

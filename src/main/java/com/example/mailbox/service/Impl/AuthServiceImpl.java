@@ -9,7 +9,6 @@ import com.example.mailbox.util.JwtUtil;
 import com.example.mailbox.vo.LoginResponseVO;
 import com.example.mailbox.vo.UserInfoVO;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import com.example.mailbox.vo.RegisterResponseVO;
 
@@ -23,9 +22,6 @@ public class AuthServiceImpl implements AuthService {
 
     @Autowired
     private UserRepository userRepository;
-
-    @Autowired
-    private PasswordEncoder passwordEncoder;
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -44,7 +40,7 @@ public class AuthServiceImpl implements AuthService {
         Account user = new Account();
         user.setUsername(registerRequestDTO.getEmail());
         user.setEmail(registerRequestDTO.getEmail());
-        user.setPassword(passwordEncoder.encode(registerRequestDTO.getPassword()));
+        user.setPassword(registerRequestDTO.getPassword()); // 不再加密
 
         // 保存用户
         Account savedUser = userRepository.save(user);
@@ -66,7 +62,7 @@ public class AuthServiceImpl implements AuthService {
         }
         Account user = account.get();
 
-        if (!passwordEncoder.matches(password, user.getPassword())) {
+        if (!password.equals(user.getPassword())) { // 不再使用加密比较
             throw new RuntimeException("密码错误");
         }
 

@@ -1,9 +1,7 @@
 package com.example.mailbox.service;
 
 import com.example.mailbox.entity.Account;
-import org.springframework.security.core.userdetails.UserDetailsService;
-
-public interface UserService extends UserDetailsService {
+public interface UserService {
     Account getUserByEmail(String email);
     Account getUserById(Long id);
     Account save(Account user);

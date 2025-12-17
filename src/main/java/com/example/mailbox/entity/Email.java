@@ -85,6 +85,9 @@ public class Email {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
+    @OneToMany(mappedBy = "email", fetch = FetchType.EAGER, cascade = CascadeType.ALL)
+    private List<Attachment> attachments;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

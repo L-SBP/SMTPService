@@ -18,10 +18,10 @@ public class Blacklist {
     private Long id;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(name = "bl_type", nullable = false)
     private Type type; // IP 或 EMAIL
 
-    @Column(nullable = false, unique = true)
+    @Column(name = "bl_value", nullable = false, unique = true)
     private String value; // 具体 IP 地址或邮箱地址
 
     @Column(name = "created_at")

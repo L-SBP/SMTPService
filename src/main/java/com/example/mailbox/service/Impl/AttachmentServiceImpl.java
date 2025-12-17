@@ -31,12 +31,34 @@ public class AttachmentServiceImpl implements AttachmentService {
 
     @Override
     @Transactional
-    public void uploadAttachment(Long emailId, MultipartFile file) {
-        Email email = emailRepository.findById(emailId)
-                .orElseThrow(() -> new RuntimeException("邮件不存在"));
+    public Attachment uploadAttachment(Long emailId, MultipartFile file) {
+        Email email = null;
+        if (emailId != null) {
+            email = emailRepository.findById(emailId)
+                    .orElseThrow(() -> new RuntimeException("邮件不存在"));
+        }
 
         try {
-            saveFile(email, file.getInputStream(), file.getContentType(), file.getOriginalFilename(), file.getSize());
+            if (email != null) {
+                return saveFile(email, file.getInputStream(), file.getContentType(), file.getOriginalFilename(), file.getSize());
+            } else {
+                if (!Files.exists(uploadPath)) {
+                    Files.createDirectories(uploadPath);
+                }
+                String savedFileName = java.util.UUID.randomUUID() + "_" + (file.getOriginalFilename() != null ? file.getOriginalFilename() : "unknown");
+                Path filePath = uploadPath.resolve(savedFileName);
+                Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+
+                Attachment attachment = new Attachment();
+                attachment.setEmail(null);
+                attachment.setFileName(file.getOriginalFilename());
+                attachment.setFileSize(file.getSize());
+                attachment.setContentType(file.getContentType());
+                // 使用绝对路径
+                attachment.setFilePath(filePath.toAbsolutePath().toString());
+                // 注意：未绑定邮件时不持久化，只返回用于后续发送的临时信息
+                return attachment;
+            }
         } catch (IOException e) {
             throw new RuntimeException("附件上传失败", e);
         }
@@ -56,15 +78,26 @@ public class AttachmentServiceImpl implements AttachmentService {
         saveFile(email, inputStream, contentType, fileName, size);
     }
 
-    private void saveFile(Email email, InputStream inputStream, String contentType, String fileName, long size) {
-        // 1. 检查并更新配额
-        Account user = email.getUser();
-        // 将字节转换为MB
-        double sizeInMb = size / (1024.0 * 1024.0);
+    @Override
+    public Attachment getAttachment(Long id) {
+        return attachmentRepository.findById(id).orElse(null);
+    }
 
-        // 只有当用户有配额限制时才检查
-        if (user.getQuotaLimit() > 0 && (user.getUsedSpace() + sizeInMb > user.getQuotaLimit())) {
-            throw new RuntimeException("邮箱空间已满，无法保存附件: " + fileName);
+    private Attachment saveFile(Email email, InputStream inputStream, String contentType, String fileName, long size) {
+        // 1. 检查并更新配额 (如果 email 不为空)
+        if (email != null && email.getUser() != null) {
+            Account user = email.getUser();
+            // 将字节转换为MB
+            double sizeInMb = size / (1024.0 * 1024.0);
+
+            // 只有当用户有配额限制时才检查
+            if (user.getQuotaLimit() > 0 && (user.getUsedSpace() + sizeInMb > user.getQuotaLimit())) {
+                throw new RuntimeException("邮箱空间已满，无法保存附件: " + fileName);
+            }
+            
+            // 更新用户已用空间
+            user.setUsedSpace(user.getUsedSpace() + sizeInMb);
+            userRepository.save(user);
         }
 
         try {
@@ -84,12 +117,9 @@ public class AttachmentServiceImpl implements AttachmentService {
             attachment.setFileName(fileName);
             attachment.setFileSize(size);
             attachment.setContentType(contentType);
-            attachment.setFilePath(filePath.toString());
-            attachmentRepository.save(attachment);
-
-            // 2. 更新用户已用空间
-            user.setUsedSpace(user.getUsedSpace() + sizeInMb);
-            userRepository.save(user);
+            // 使用绝对路径以避免相对路径在不同执行环境下找不到文件的问题
+            attachment.setFilePath(filePath.toAbsolutePath().toString());
+            return attachmentRepository.save(attachment);
 
         } catch (IOException e) {
             throw new RuntimeException("保存附件文件失败: " + fileName, e);

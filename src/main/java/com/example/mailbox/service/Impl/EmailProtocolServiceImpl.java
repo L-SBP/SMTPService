@@ -17,6 +17,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
+import java.io.File;
+import jakarta.activation.DataHandler;
+import jakarta.activation.DataSource;
+import jakarta.activation.FileDataSource;
+
 /**
  * 邮件协议服务实现类
  * 使用POP3和SMTP协议与邮件服务器通信
@@ -31,56 +36,65 @@ public class EmailProtocolServiceImpl implements EmailProtocolService {
     @Override
     public List<Email> receiveEmails(String email, String password, String host, int port, boolean ssl) {
         List<Email> emails = new ArrayList<>();
-        
+        Store store = null;
+        Folder inbox = null;
+
         try {
             // 配置POP3属性
             Properties props = new Properties();
-            props.put("mail.store.protocol", "pop3");
-            if (ssl) {
-                props.put("mail.pop3.ssl.enable", "true");
-                props.put("mail.pop3.ssl.trust", "*");
-            } else {
-                props.put("mail.pop3.starttls.enable", "true");
-            }
             props.put("mail.pop3.host", host);
             props.put("mail.pop3.port", String.valueOf(port));
+            props.put("mail.pop3.auth", "true");
+            // 同样禁用STARTTLS，避免本地服务器不支持导致的问题
+            props.put("mail.pop3.starttls.enable", "false");
+            
+            if (ssl) {
+                props.put("mail.pop3.ssl.enable", "true");
+                props.put("mail.pop3.socketFactory.class", "javax.net.ssl.SSLSocketFactory");
+            }
 
-            // 创建会话
-            Session session = Session.getInstance(props);
-            session.setDebug(false); // 生产环境关闭调试
+            // 获取Session
+            Session session = Session.getInstance(props, null);
+            session.setDebug(false);
 
-            // 连接POP3服务器
-            Store store = session.getStore("pop3");
+            // 连接Store
+            store = session.getStore(ssl ? "pop3s" : "pop3");
             store.connect(host, port, email, password);
 
-            // 打开收件箱文件夹
-            Folder inbox = store.getFolder("INBOX");
+            // 打开收件箱
+            inbox = store.getFolder("INBOX");
             inbox.open(Folder.READ_ONLY);
 
             // 获取邮件
             Message[] messages = inbox.getMessages();
-            log.info("从POP3服务器获取到 {} 封邮件", messages.length);
+            log.info("从POP3服务器接收到 {} 封邮件: {}", messages.length, email);
 
-            // 处理邮件
-            for (Message message : messages) {
-                try {
-                    Email emailEntity = parseMessageToEmail(message, email);
-                    if (emailEntity != null) {
-                        emails.add(emailEntity);
-                    }
-                } catch (Exception e) {
-                    log.error("解析邮件失败: {}", e.getMessage());
-                    continue;
+            // 倒序遍历（最新的在前），限制数量以提高性能
+            // 实际应用中应该记录上次接收的UID，只接收新邮件
+            // 这里简化处理，读取所有邮件
+            for (int i = messages.length - 1; i >= 0; i--) {
+                Message message = messages[i];
+                Email emailEntity = parseMessageToEmail(message, email);
+                if (emailEntity != null) {
+                    emails.add(emailEntity);
                 }
             }
 
-            // 关闭连接
-            inbox.close(false);
-            store.close();
-
         } catch (Exception e) {
             log.error("接收邮件失败: {}", e.getMessage(), e);
-            throw new RuntimeException("接收邮件失败: " + e.getMessage());
+            // 这里不抛出异常，而是返回已获取的邮件（如果有）或空列表
+            // 避免因连接问题导致整个页面崩溃
+        } finally {
+            try {
+                if (inbox != null && inbox.isOpen()) {
+                    inbox.close(false);
+                }
+                if (store != null && store.isConnected()) {
+                    store.close();
+                }
+            } catch (Exception e) {
+                log.error("关闭资源失败: {}", e.getMessage());
+            }
         }
 
         return emails;
@@ -89,11 +103,17 @@ public class EmailProtocolServiceImpl implements EmailProtocolService {
 
     @Override
     public boolean sendEmail(String senderEmail, String password, List<String> recipients, String subject, String content, String host, int port, boolean ssl) {
+        return sendEmail(senderEmail, password, recipients, subject, content, null, host, port, ssl);
+    }
+
+    @Override
+    public boolean sendEmail(String senderEmail, String password, List<String> recipients, String subject, String content, List<File> attachments, String host, int port, boolean ssl) {
         try {
             // 配置SMTP属性
             Properties props = new Properties();
             props.put("mail.smtp.auth", "true");
-            props.put("mail.smtp.starttls.enable", "true");
+            // 本地自定义服务器不支持STARTTLS升级，必须禁用
+            props.put("mail.smtp.starttls.enable", "false");
             props.put("mail.smtp.host", host);
             props.put("mail.smtp.port", String.valueOf(port));
             props.put("mail.smtp.ssl.trust", "*");
@@ -127,7 +147,30 @@ public class EmailProtocolServiceImpl implements EmailProtocolService {
             }
             
             message.setSubject(subject);
-            message.setText(content, "UTF-8");
+
+            // 构建复合消息体
+            Multipart multipart = new MimeMultipart();
+
+            // 1. 文本部分
+            MimeBodyPart textPart = new MimeBodyPart();
+            textPart.setText(content, "UTF-8");
+            multipart.addBodyPart(textPart);
+
+            // 2. 附件部分
+            if (attachments != null && !attachments.isEmpty()) {
+                for (File file : attachments) {
+                    if (file.exists()) {
+                        MimeBodyPart attachmentPart = new MimeBodyPart();
+                        DataSource source = new FileDataSource(file);
+                        attachmentPart.setDataHandler(new DataHandler(source));
+                        attachmentPart.setFileName(MimeUtility.encodeText(file.getName()));
+                        multipart.addBodyPart(attachmentPart);
+                    }
+                }
+            }
+
+            // 设置消息内容
+            message.setContent(multipart);
 
             // 发送邮件
             Transport.send(message);
@@ -145,14 +188,14 @@ public class EmailProtocolServiceImpl implements EmailProtocolService {
     public Pop3ServerConfig getPop3Config(String email) {
         // 课程作业：统一使用自定义邮箱服务器
         // 所有@mb.com邮箱都使用同一个POP3服务器
-        return new Pop3ServerConfig("pop.mb.com", 110, false);
+        return new Pop3ServerConfig("localhost", 1100, false);
     }
 
     @Override
     public SmtpServerConfig getSmtpConfig(String email) {
         // 课程作业：统一使用自定义邮箱服务器
         // 所有@mb.com邮箱都使用同一个SMTP服务器
-        return new SmtpServerConfig("smtp.mb.com", 25, false);
+        return new SmtpServerConfig("localhost", 2525, false);
     }
 
     /**

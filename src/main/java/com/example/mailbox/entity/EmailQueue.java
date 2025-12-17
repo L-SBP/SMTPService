@@ -32,7 +32,7 @@ public class EmailQueue {
     private int retryCount;
     
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false)
+    @Column(name = "queue_status", nullable = false)
     private Status status;
     
     @Column(name = "next_retry_time")

@@ -18,19 +18,19 @@ public class SystemLog {
     private Long id;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(name = "log_type", nullable = false)
     private LogType type; // SMTP, POP3, SYSTEM, ADMIN
 
-    @Column(nullable = false)
+    @Column(name = "log_operator", nullable = false)
     private String operator; // 操作者IP或用户名
 
-    @Column(nullable = false)
+    @Column(name = "log_action", nullable = false)
     private String action; // 操作名称 (e.g., LOGIN, SEND_MAIL)
 
     @Column(length = 1000)
     private String details; // 详情描述
 
-    @Column(nullable = false)
+    @Column(name = "log_status", nullable = false)
     private String status; // SUCCESS, FAILURE
 
     @Column(name = "created_at")

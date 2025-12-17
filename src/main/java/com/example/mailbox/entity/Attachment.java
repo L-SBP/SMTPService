@@ -1,5 +1,6 @@
 package com.example.mailbox.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -18,7 +19,8 @@ public class Attachment {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "email_id", nullable = false)
+    @JoinColumn(name = "email_id", nullable = true)
+    @JsonIgnore
     private Email email;
 
     @Column(name = "file_name", nullable = false)

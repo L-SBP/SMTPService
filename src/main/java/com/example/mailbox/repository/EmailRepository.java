@@ -15,6 +15,8 @@ import java.util.List;
 @Repository
 public interface EmailRepository extends JpaRepository<Email, Long> {
     Page<Email> findByUserEmailAndFolderTypeOrderByReceivedTimeDesc(String email, FolderType folderType, Pageable pageable);
+    
+    Page<Email> findByUserEmailAndIsStarredTrueOrderByReceivedTimeDesc(String email, Pageable pageable);
 
     Page<Email> findByUserEmailOrderByReceivedTimeDesc(String email, Pageable pageable);
 

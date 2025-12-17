@@ -5,6 +5,7 @@ import com.example.mailbox.vo.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.util.List;
+import java.io.File;
 
 /**
  * 邮件协议服务接口
@@ -36,6 +37,9 @@ public interface EmailProtocolService {
      * @return 发送结果
      */
     boolean sendEmail(String senderEmail, String password, List<String> recipients, String subject, String content, String host, int port, boolean ssl);
+
+    // 新增：支持附件的发送方法
+    boolean sendEmail(String senderEmail, String password, List<String> recipients, String subject, String content, List<File> attachments, String host, int port, boolean ssl);
     
     /**
      * 获取POP3服务器配置

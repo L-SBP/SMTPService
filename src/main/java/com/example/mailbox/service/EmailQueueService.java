@@ -2,6 +2,7 @@ package com.example.mailbox.service;
 
 import com.example.mailbox.entity.Email;
 import com.example.mailbox.entity.EmailQueue;
+import com.example.mailbox.dto.EmailQueueStatusDTO;
 import com.example.mailbox.vo.ApiResponse;
 
 import java.util.List;
@@ -30,7 +31,7 @@ public interface EmailQueueService {
     /**
      * 获取队列状态
      */
-    List<EmailQueue> getQueueStatus();
+    List<EmailQueueStatusDTO> getQueueStatus();
     
     /**
      * 清空队列

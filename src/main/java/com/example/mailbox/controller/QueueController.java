@@ -1,5 +1,6 @@
 package com.example.mailbox.controller;
 
+import com.example.mailbox.dto.EmailQueueStatusDTO;
 import com.example.mailbox.entity.EmailQueue;
 import com.example.mailbox.repository.UserRepository;
 import com.example.mailbox.service.EmailQueueService;
@@ -63,10 +64,10 @@ public class QueueController {
      * 获取队列状态
      */
     @GetMapping("/status")
-    public ResponseEntity<ApiResponse<List<EmailQueue>>> getQueueStatus(HttpServletRequest httpRequest) {
+    public ResponseEntity<ApiResponse<List<EmailQueueStatusDTO>>> getQueueStatus(HttpServletRequest httpRequest) {
         try {
             requireAdmin(httpRequest);
-            List<EmailQueue> queueItems = emailQueueService.getQueueStatus();
+            List<EmailQueueStatusDTO> queueItems = emailQueueService.getQueueStatus();
             return ResponseEntity.ok(new ApiResponse<>(true, queueItems, "获取队列状态成功", null));
         } catch (Exception e) {
             return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));

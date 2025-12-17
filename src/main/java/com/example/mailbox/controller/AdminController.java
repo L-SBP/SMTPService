@@ -33,6 +33,7 @@ import java.util.Set;
 import com.example.mailbox.util.JwtUtil;
 import com.example.mailbox.service.TokenService;
 import java.util.stream.Collectors;
+import org.springframework.dao.DataIntegrityViolationException;
 
 /**
  * 管理员控制器 - 处理管理员相关操作
@@ -204,19 +205,33 @@ public class AdminController {
         } catch (Exception e) {
             return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
         }
-        log.info("管理员添加黑名单，类型：{}，值：{}", request.getType(), request.getValue());
-        if (blacklistRepository.existsByTypeAndValue(request.getType(), request.getValue())) {
-            log.warn("黑名单记录已存在，类型：{}，值：{}", request.getType(), request.getValue());
-            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "该记录已存在", null));
+        if (request == null || request.getType() == null) {
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "类型不能为空", null));
+        }
+        if (request.getValue() == null || request.getValue().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "值不能为空", null));
+        }
+
+        String value = request.getValue().trim();
+        log.info("管理员添加黑名单，类型：{}，值：{}", request.getType(), value);
+
+        if (blacklistRepository.existsByValue(value)) {
+            log.warn("黑名单记录已存在，值：{}", value);
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "该值已存在", null));
         }
 
         Blacklist blacklist = new Blacklist();
         blacklist.setType(request.getType());
-        blacklist.setValue(request.getValue());
+        blacklist.setValue(value);
 
-        Blacklist saved = blacklistRepository.save(blacklist);
-        log.info("黑名单添加成功，ID：{}", saved.getId());
-        return ResponseEntity.ok(new ApiResponse<>(true, saved, "添加成功", null));
+        try {
+            Blacklist saved = blacklistRepository.save(blacklist);
+            log.info("黑名单添加成功，ID：{}", saved.getId());
+            return ResponseEntity.ok(new ApiResponse<>(true, saved, "添加成功", null));
+        } catch (DataIntegrityViolationException e) {
+            log.warn("黑名单添加失败（可能已存在），类型：{}，值：{}", request.getType(), value);
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "添加失败：该值已存在", null));
+        }
     }
 
     @DeleteMapping("/blacklist/{id}")

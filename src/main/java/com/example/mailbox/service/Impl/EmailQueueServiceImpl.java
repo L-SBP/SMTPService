@@ -2,6 +2,7 @@ package com.example.mailbox.service.Impl;
 
 import com.example.mailbox.entity.Email;
 import com.example.mailbox.entity.EmailQueue;
+import com.example.mailbox.dto.EmailQueueStatusDTO;
 import com.example.mailbox.repository.EmailQueueRepository;
 import com.example.mailbox.repository.EmailRepository;
 import com.example.mailbox.service.EmailQueueService;
@@ -14,7 +15,12 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 邮件队列服务实现
@@ -153,8 +159,38 @@ public class EmailQueueServiceImpl implements EmailQueueService {
      * 获取队列状态
      */
     @Override
-    public List<EmailQueue> getQueueStatus() {
-        return emailQueueRepository.findAllByOrderByCreatedAtDesc();
+    public List<EmailQueueStatusDTO> getQueueStatus() {
+        List<EmailQueue> queueItems = emailQueueRepository.findAllByOrderByCreatedAtDesc();
+        Set<Long> emailIds = queueItems.stream()
+                .map(EmailQueue::getEmailId)
+                .filter(id -> id != null && id > 0)
+                .collect(Collectors.toSet());
+
+        Map<Long, Email> emailMap = emailIds.isEmpty()
+                ? Collections.emptyMap()
+                : emailRepository.findAllById(emailIds).stream()
+                    .collect(Collectors.toMap(Email::getId, Function.identity(), (a, b) -> a));
+
+        return queueItems.stream().map(item -> {
+            Email email = emailMap.get(item.getEmailId());
+            EmailQueueStatusDTO dto = new EmailQueueStatusDTO();
+            dto.setId(item.getId());
+            dto.setEmailId(item.getEmailId());
+            dto.setErrorMessage(item.getErrorMessage());
+            dto.setRetryCount(item.getRetryCount());
+            dto.setStatus(item.getStatus() != null ? item.getStatus().name() : null);
+            dto.setNextRetryTime(item.getNextRetryTime());
+            dto.setCreatedAt(item.getCreatedAt());
+            dto.setUpdatedAt(item.getUpdatedAt());
+
+            if (email != null) {
+                dto.setSender(email.getSender());
+                dto.setRecipients(email.getRecipients());
+                dto.setSubject(email.getSubject());
+            }
+
+            return dto;
+        }).collect(Collectors.toList());
     }
 
     /**

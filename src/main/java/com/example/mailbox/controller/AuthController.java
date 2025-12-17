@@ -4,6 +4,7 @@ import com.example.mailbox.dto.LoginRequestDTO;
 import com.example.mailbox.dto.RegisterRequestDTO;
 import com.example.mailbox.service.AuthService;
 import com.example.mailbox.service.TokenService;
+import com.example.mailbox.vo.ApiResponse;
 import com.example.mailbox.vo.LoginResponseVO;
 import com.example.mailbox.vo.RegisterResponseVO;
 import lombok.extern.slf4j.Slf4j;
@@ -30,15 +31,19 @@ public class AuthController {
      * 用户登录
      */
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody LoginRequestDTO request) {
+    public ResponseEntity<ApiResponse<LoginResponseVO>> login(@RequestBody LoginRequestDTO request) {
         log.info("用户登录请求，用户名/邮箱: {}", request.getIdentifier());
         try {
             LoginResponseVO response = authService.login(request.getIdentifier(), request.getPassword());
             log.info("用户登录成功，用户名: {}", response.getUser().getUsername());
-            return ResponseEntity.ok(response);
+            return ResponseEntity.ok(new ApiResponse<>(
+                    true, response, "登录成功", null
+            ));
         } catch (Exception e) {
             log.warn("用户登录失败，用户名/邮箱: {}, 原因: {}", request.getIdentifier(), e.getMessage());
-            return ResponseEntity.badRequest().body("登录失败: " + e.getMessage());
+            return ResponseEntity.badRequest().body(new ApiResponse<>(
+                    false, null, "用户名或密码错误", null
+            ));
         }
     }
 
@@ -46,16 +51,20 @@ public class AuthController {
      * 用户注册
      */
     @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody RegisterRequestDTO request) {
+    public ResponseEntity<ApiResponse<RegisterResponseVO>> register(@RequestBody RegisterRequestDTO request) {
         log.info("用户注册请求，用户名: {}, 邮箱: {}", request.getUsername(), request.getEmail());
         try {
             RegisterResponseVO response = authService.register(request);
             log.info("用户注册成功， 邮箱: {}", response.getEmail());
-            return ResponseEntity.ok(response);
+            return ResponseEntity.ok(new ApiResponse<>(
+                    true, response, "注册成功", null
+            ));
         } catch (Exception e) {
             log.warn("用户注册失败，用户名: {}, 邮箱: {}, 原因: {}", 
                 request.getUsername(), request.getEmail(), e.getMessage());
-            return ResponseEntity.badRequest().body("注册失败: " + e.getMessage());
+            return ResponseEntity.badRequest().body(new ApiResponse<>(
+                    false, null, "注册失败: " + e.getMessage(), null
+            ));
         }
     }
 
@@ -63,7 +72,7 @@ public class AuthController {
      * 用户登出
      */
     @PostMapping("/logout")
-    public ResponseEntity<?> logout(@RequestHeader("Authorization") String authHeader) {
+    public ResponseEntity<ApiResponse<String>> logout(@RequestHeader("Authorization") String authHeader) {
         log.info("用户登出请求");
         try {
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
@@ -71,10 +80,14 @@ public class AuthController {
                 tokenService.deleteToken(token);
                 log.info("用户登出成功");
             }
-            return ResponseEntity.ok("已退出登录");
+            return ResponseEntity.ok(new ApiResponse<>(
+                    true, "已退出登录", "退出成功", null
+            ));
         } catch (Exception e) {
             log.warn("用户登出失败，原因: {}", e.getMessage());
-            return ResponseEntity.badRequest().body("登出失败: " + e.getMessage());
+            return ResponseEntity.badRequest().body(new ApiResponse<>(
+                    false, null, "登出失败: " + e.getMessage(), null
+            ));
         }
     }
 }

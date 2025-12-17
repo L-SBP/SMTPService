@@ -30,11 +30,9 @@ public class GroupController {
 
         Group createdGroup = groupService.createGroup(email, group);
 
-        ApiResponse<Group> response = new ApiResponse<>(
+        return ResponseEntity.ok(new ApiResponse<>(
             true, createdGroup, "群组创建成功", null
-        );
-
-        return ResponseEntity.ok(response);
+        ));
     }
 
     @PutMapping
@@ -44,11 +42,9 @@ public class GroupController {
 
         Group updatedGroup = groupService.updateGroup(email, group);
 
-        ApiResponse<Group> response = new ApiResponse<>(
+        return ResponseEntity.ok(new ApiResponse<>(
             true, updatedGroup, "群组更新成功", null
-        );
-
-        return ResponseEntity.ok(response);
+        ));
     }
 
     @DeleteMapping("/{groupId}")
@@ -58,11 +54,9 @@ public class GroupController {
 
         groupService.deleteGroup(groupId, email);
 
-        ApiResponse<String> response = new ApiResponse<>(
+        return ResponseEntity.ok(new ApiResponse<>(
             true, "群组删除成功", "群组删除成功", null
-        );
-
-        return ResponseEntity.ok(response);
+        ));
     }
 
     @GetMapping("/{groupId}")
@@ -72,11 +66,9 @@ public class GroupController {
 
         Group group = groupService.getGroup(groupId, email);
 
-        ApiResponse<Group> response = new ApiResponse<>(
+        return ResponseEntity.ok(new ApiResponse<>(
             true, group, "获取群组详情成功", null
-        );
-
-        return ResponseEntity.ok(response);
+        ));
     }
 
     @GetMapping("/created")
@@ -88,11 +80,9 @@ public class GroupController {
         Pageable pageable = PageRequest.of(page, size);
         Page<Group> groups = groupService.getCreatedGroups(email, pageable);
 
-        ApiResponse<Page<Group>> response = new ApiResponse<>(
+        return ResponseEntity.ok(new ApiResponse<>(
             true, groups, "获取创建的群组成功", null
-        );
-
-        return ResponseEntity.ok(response);
+        ));
     }
 
     @GetMapping("/joined")
@@ -104,11 +94,9 @@ public class GroupController {
         Pageable pageable = PageRequest.of(page, size);
         Page<Group> groups = groupService.getJoinedGroups(email, pageable);
 
-        ApiResponse<Page<Group>> response = new ApiResponse<>(
+        return ResponseEntity.ok(new ApiResponse<>(
             true, groups, "获取加入的群组成功", null
-        );
-
-        return ResponseEntity.ok(response);
+        ));
     }
 
     @GetMapping("/all")
@@ -120,11 +108,9 @@ public class GroupController {
         Pageable pageable = PageRequest.of(page, size);
         Page<Group> groups = groupService.getAllGroups(email, pageable);
 
-        ApiResponse<Page<Group>> response = new ApiResponse<>(
+        return ResponseEntity.ok(new ApiResponse<>(
             true, groups, "获取所有群组成功", null
-        );
-
-        return ResponseEntity.ok(response);
+        ));
     }
 
     @GetMapping("/search")
@@ -137,11 +123,9 @@ public class GroupController {
         Pageable pageable = PageRequest.of(page, size);
         Page<Group> groups = groupService.searchGroups(email, query, pageable);
 
-        ApiResponse<Page<Group>> response = new ApiResponse<>(
+        return ResponseEntity.ok(new ApiResponse<>(
             true, groups, "搜索群组成功", null
-        );
-
-        return ResponseEntity.ok(response);
+        ));
     }
 
     @PostMapping("/members")
@@ -151,11 +135,9 @@ public class GroupController {
 
         groupService.addMember(request.groupId, request.accountId, email);
 
-        ApiResponse<String> response = new ApiResponse<>(
+        return ResponseEntity.ok(new ApiResponse<>(
             true, "添加成员成功", "添加成员成功", null
-        );
-
-        return ResponseEntity.ok(response);
+        ));
     }
 
     @DeleteMapping("/{groupId}/members/{accountId}")
@@ -166,11 +148,9 @@ public class GroupController {
 
         groupService.removeMember(groupId, accountId, email);
 
-        ApiResponse<String> response = new ApiResponse<>(
+        return ResponseEntity.ok(new ApiResponse<>(
             true, "移除成员成功", "移除成员成功", null
-        );
-
-        return ResponseEntity.ok(response);
+        ));
     }
 
     @GetMapping("/{groupId}/members")
@@ -183,11 +163,9 @@ public class GroupController {
         Pageable pageable = PageRequest.of(page, size);
         Page<GroupMember> members = groupService.getMembers(groupId, email, pageable);
 
-        ApiResponse<Page<GroupMember>> response = new ApiResponse<>(
+        return ResponseEntity.ok(new ApiResponse<>(
             true, members, "获取群组成员成功", null
-        );
-
-        return ResponseEntity.ok(response);
+        ));
     }
 
     @GetMapping("/{groupId}/member-count")
@@ -197,11 +175,9 @@ public class GroupController {
 
         Integer count = groupService.getMemberCount(groupId, email);
 
-        ApiResponse<Integer> response = new ApiResponse<>(
+        return ResponseEntity.ok(new ApiResponse<>(
             true, count, "获取成员数量成功", null
-        );
-
-        return ResponseEntity.ok(response);
+        ));
     }
 
     @GetMapping("/{groupId}/members/{accountId}/check")
@@ -212,11 +188,9 @@ public class GroupController {
 
         Boolean isMember = groupService.isMember(groupId, accountId, email);
 
-        ApiResponse<Boolean> response = new ApiResponse<>(
+        return ResponseEntity.ok(new ApiResponse<>(
             true, isMember, "检查成员状态成功", null
-        );
-
-        return ResponseEntity.ok(response);
+        ));
     }
 
     // 群组成员请求DTO

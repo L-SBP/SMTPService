@@ -8,17 +8,15 @@ import com.example.mailbox.service.TokenService;
 import com.example.mailbox.util.JwtUtil;
 import com.example.mailbox.vo.LoginResponseVO;
 import com.example.mailbox.vo.UserInfoVO;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
 import com.example.mailbox.vo.RegisterResponseVO;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
 
 import java.util.Optional;
 
 @Service
 public class AuthServiceImpl implements AuthService {
-
-    @Autowired
-    private UserServiceImpl userService;
 
     @Autowired
     private UserRepository userRepository;
@@ -29,6 +27,10 @@ public class AuthServiceImpl implements AuthService {
     @Autowired
     private TokenService tokenService;
 
+    // 关键：注入密码加密器
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
     @Override
     public RegisterResponseVO register(RegisterRequestDTO registerRequestDTO) {
         // 检查邮箱是否已存在
@@ -38,9 +40,12 @@ public class AuthServiceImpl implements AuthService {
 
         // 创建新用户
         Account user = new Account();
-        user.setUsername(registerRequestDTO.getEmail());
+        user.setUsername(registerRequestDTO.getEmail()); // 默认用邮箱作为用户名
         user.setEmail(registerRequestDTO.getEmail());
-        user.setPassword(registerRequestDTO.getPassword()); // 不再加密
+
+        // 【关键修改】注册时必须加密密码
+        user.setPassword(passwordEncoder.encode(registerRequestDTO.getPassword()));
+
         user.setIsAdmin(false); // 默认非管理员
         user.setEnabled(true);  // 默认启用
         user.setQuotaLimit(100.0); // 默认配额100MB
@@ -59,6 +64,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public LoginResponseVO login(String identify, String password) {
+        // 支持用户名或邮箱登录
         Optional<Account> account = userRepository.findByIdentifier(identify);
 
         if (account.isEmpty()) {
@@ -71,8 +77,9 @@ public class AuthServiceImpl implements AuthService {
             throw new RuntimeException("账号已被禁用，请联系管理员");
         }
 
-        if (!password.equals(user.getPassword())) { // 不再使用加密比较
-            throw new RuntimeException("密码错误");
+        // 【关键修改】登录必须使用 matches 方法比较明文和密文
+        if (!passwordEncoder.matches(password, user.getPassword())) {
+            throw new RuntimeException("用户名或密码错误");
         }
 
         String token = jwtUtil.generateToken(user.getUsername());

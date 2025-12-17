@@ -3,16 +3,21 @@ package com.example.mailbox.service.Impl;
 import com.example.mailbox.entity.Account;
 import com.example.mailbox.repository.UserRepository;
 import com.example.mailbox.service.UserService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Optional;
-
+@Slf4j
 @Service
 public class UserServiceImpl implements UserService {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     @Override
     public Account getUserByEmail(String email) {
@@ -29,22 +34,27 @@ public class UserServiceImpl implements UserService {
         return userRepository.save(user);
     }
 
-
-    // 3. 实现修改密码逻辑
     @Override
+    @Transactional
     public void changePassword(String email, String oldPassword, String newPassword) {
-        Account user = getUserByEmail(email);
-        if (user == null) {
-            throw new RuntimeException("用户不存在");
+        // 1. 修改入参为 email，以匹配接口定义
+        log.info("接收到修改密码请求，用户邮箱: {}", email);
+
+        // 2. 通过邮箱查找用户
+        Account user = userRepository.findByEmail(email)
+            .orElseThrow(() -> new RuntimeException("用户不存在"));
+
+        // 3. 校验旧密码
+        if (!passwordEncoder.matches(oldPassword, user.getPassword())) {
+            log.error("修改密码失败：旧密码不匹配");
+            throw new RuntimeException("原密码错误");
         }
 
-        // 验证旧密码是否正确
-        if (!oldPassword.equals(user.getPassword())) {
-            throw new RuntimeException("原密码不正确");
-        }
+        // 4. 加密新密码并保存
+        String encodedPassword = passwordEncoder.encode(newPassword);
+        user.setPassword(encodedPassword);
 
-        // 保存新密码
-        user.setPassword(newPassword);
         userRepository.save(user);
+        log.info("密码修改成功");
     }
 }

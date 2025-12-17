@@ -82,11 +82,11 @@ public class AuthServiceImpl implements AuthService {
             throw new RuntimeException("用户名或密码错误");
         }
 
-        String token = jwtUtil.generateToken(user.getUsername());
+        String token = jwtUtil.generateToken(user.getEmail());
 
         // 将Token存储到Redis
         long expiration = jwtUtil.getExpiration();
-        tokenService.storeToken(token, user.getUsername(), expiration);
+        tokenService.storeToken(token, user.getEmail(), expiration);
 
         // 构建用户信息
         UserInfoVO userInfoVO = new UserInfoVO();

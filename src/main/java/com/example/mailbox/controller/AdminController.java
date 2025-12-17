@@ -2,21 +2,33 @@ package com.example.mailbox.controller;
 
 import com.example.mailbox.entity.Account;
 import com.example.mailbox.entity.Blacklist;
+import com.example.mailbox.entity.SystemLog;
+import com.example.mailbox.dto.AttachmentDTO;
 import com.example.mailbox.repository.BlacklistRepository;
+import com.example.mailbox.repository.GroupMemberRepository;
+import com.example.mailbox.repository.SystemLogRepository;
 import com.example.mailbox.repository.UserRepository;
 import com.example.mailbox.server.EnhancedPop3Server;
 import com.example.mailbox.server.EnhancedSmtpServer;
+import com.example.mailbox.service.EmailService;
 import com.example.mailbox.vo.ApiResponse;
 import com.example.mailbox.vo.Page;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 
 import com.example.mailbox.util.JwtUtil;
 import com.example.mailbox.service.TokenService;
@@ -33,13 +45,48 @@ public class AdminController {
 
     @Autowired private UserRepository userRepository;
     @Autowired private BlacklistRepository blacklistRepository;
+    @Autowired private SystemLogRepository systemLogRepository;
+    @Autowired private GroupMemberRepository groupMemberRepository;
+    @Autowired private EmailService emailService;
     @Autowired private JwtUtil jwtUtil;
     @Autowired private TokenService tokenService;
+    @Autowired private PasswordEncoder passwordEncoder;
+
+    private Account requireAdmin(HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            throw new RuntimeException("未提供认证信息");
+        }
+
+        String token = authHeader.substring(7);
+        String identifier = jwtUtil.extractUsername(token);
+        if (identifier == null || !jwtUtil.validateToken(token, identifier) || !tokenService.hasToken(token)) {
+            throw new RuntimeException("认证信息无效");
+        }
+
+        Account operator = userRepository.findByIdentifier(identifier)
+                .orElseThrow(() -> new RuntimeException("用户不存在"));
+
+        if (Boolean.FALSE.equals(operator.getEnabled())) {
+            throw new RuntimeException("账号已被禁用");
+        }
+
+        if (!Boolean.TRUE.equals(operator.getIsAdmin())) {
+            throw new RuntimeException("无管理员权限");
+        }
+
+        return operator;
+    }
 
     // --- 用户管理 ---
 
     @PostMapping("/users")
-    public ResponseEntity<ApiResponse<Account>> createUser(@RequestBody CreateUserRequest request) {
+    public ResponseEntity<ApiResponse<Account>> createUser(HttpServletRequest httpRequest, @RequestBody CreateUserRequest request) {
+        try {
+            requireAdmin(httpRequest);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
         log.info("管理员创建用户，邮箱：{}", request.getEmail());
         if (userRepository.existsByEmail(request.getEmail())) {
             return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "邮箱已存在", null));
@@ -48,7 +95,7 @@ public class AdminController {
         Account newUser = new Account();
         newUser.setUsername(request.getUsername());
         newUser.setEmail(request.getEmail());
-        newUser.setPassword(request.getPassword());
+        newUser.setPassword(passwordEncoder.encode(request.getPassword()));
         newUser.setEnabled(true);
         newUser.setIsAdmin(false);
         // 默认配额 100MB
@@ -61,7 +108,12 @@ public class AdminController {
     }
     
     @DeleteMapping("/users/{id}")
-    public ResponseEntity<ApiResponse<String>> deleteUser(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<String>> deleteUser(HttpServletRequest httpRequest, @PathVariable Long id) {
+        try {
+            requireAdmin(httpRequest);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
         log.info("管理员删除用户，ID：{}", id);
         if (!userRepository.existsById(id)) {
             return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "用户不存在", null));
@@ -72,7 +124,12 @@ public class AdminController {
     }
 
     @PutMapping("/users/{id}/role")
-    public ResponseEntity<ApiResponse<String>> updateUserRole(@PathVariable Long id, @RequestParam Boolean isAdmin) {
+    public ResponseEntity<ApiResponse<String>> updateUserRole(HttpServletRequest httpRequest, @PathVariable Long id, @RequestParam Boolean isAdmin) {
+        try {
+            requireAdmin(httpRequest);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
         log.info("管理员修改用户权限，用户ID：{}，是否管理员：{}", id, isAdmin);
         return userRepository.findById(id).map(user -> {
             user.setIsAdmin(isAdmin);
@@ -84,8 +141,13 @@ public class AdminController {
     }
 
     @GetMapping("/users")
-    public ResponseEntity<ApiResponse<Page<Account>>> getAllUsers(@RequestParam(defaultValue = "0") int page,
+    public ResponseEntity<ApiResponse<Page<Account>>> getAllUsers(HttpServletRequest httpRequest, @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+        try {
+            requireAdmin(httpRequest);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
         log.info("管理员查询用户列表，页码：{}，大小：{}", page, size);
         Pageable pageable = PageRequest.of(page, size);
         var usersPage = userRepository.findAll(pageable);
@@ -104,7 +166,12 @@ public class AdminController {
     }
 
     @PutMapping("/users/{id}/status")
-    public ResponseEntity<ApiResponse<String>> updateUserStatus(@PathVariable Long id, @RequestParam Boolean enabled) {
+    public ResponseEntity<ApiResponse<String>> updateUserStatus(HttpServletRequest httpRequest, @PathVariable Long id, @RequestParam Boolean enabled) {
+        try {
+            requireAdmin(httpRequest);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
         log.info("管理员修改用户状态，用户ID：{}，启用状态：{}", id, enabled);
         return userRepository.findById(id).map(user -> {
             user.setEnabled(enabled);
@@ -118,7 +185,12 @@ public class AdminController {
     // --- 黑名单管理 ---
 
     @GetMapping("/blacklist")
-    public ResponseEntity<ApiResponse<List<Blacklist>>> getBlacklist() {
+    public ResponseEntity<ApiResponse<List<Blacklist>>> getBlacklist(HttpServletRequest httpRequest) {
+        try {
+            requireAdmin(httpRequest);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
         log.info("管理员查询黑名单列表");
         List<Blacklist> blacklist = blacklistRepository.findAll();
         log.info("成功获取黑名单，记录数：{}", blacklist.size());
@@ -126,7 +198,12 @@ public class AdminController {
     }
 
     @PostMapping("/blacklist")
-    public ResponseEntity<ApiResponse<Blacklist>> addToBlacklist(@RequestBody BlacklistRequest request) {
+    public ResponseEntity<ApiResponse<Blacklist>> addToBlacklist(HttpServletRequest httpRequest, @RequestBody BlacklistRequest request) {
+        try {
+            requireAdmin(httpRequest);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
         log.info("管理员添加黑名单，类型：{}，值：{}", request.getType(), request.getValue());
         if (blacklistRepository.existsByTypeAndValue(request.getType(), request.getValue())) {
             log.warn("黑名单记录已存在，类型：{}，值：{}", request.getType(), request.getValue());
@@ -143,7 +220,12 @@ public class AdminController {
     }
 
     @DeleteMapping("/blacklist/{id}")
-    public ResponseEntity<ApiResponse<String>> removeFromBlacklist(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<String>> removeFromBlacklist(HttpServletRequest httpRequest, @PathVariable Long id) {
+        try {
+            requireAdmin(httpRequest);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
         log.info("管理员删除黑名单，ID：{}", id);
         blacklistRepository.deleteById(id);
         log.info("黑名单删除成功，ID：{}", id);
@@ -162,7 +244,12 @@ public class AdminController {
     private com.example.mailbox.service.EmailProtocolService emailProtocolService;
     
     @GetMapping("/server/status")
-    public ResponseEntity<ApiResponse<String>> getServerStatus() {
+    public ResponseEntity<ApiResponse<String>> getServerStatus(HttpServletRequest httpRequest) {
+        try {
+            requireAdmin(httpRequest);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
         String smtpStatus = smtpServer.isRunning() ? "SMTP服务器运行中" : "SMTP服务器已停止";
         String pop3Status = pop3Server.isRunning() ? "POP3服务器运行中" : "POP3服务器已停止";
         String status = smtpStatus + "，" + pop3Status;
@@ -170,7 +257,12 @@ public class AdminController {
     }
 
     @PostMapping("/server/smtp/start")
-    public ResponseEntity<ApiResponse<String>> startSmtpServer() {
+    public ResponseEntity<ApiResponse<String>> startSmtpServer(HttpServletRequest httpRequest) {
+        try {
+            requireAdmin(httpRequest);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
         try {
             if (smtpServer.isRunning()) {
                 log.warn("SMTP服务器已在运行中，无需重复启动");
@@ -189,7 +281,12 @@ public class AdminController {
     }
 
     @PostMapping("/server/smtp/stop")
-    public ResponseEntity<ApiResponse<String>> stopSmtpServer() {
+    public ResponseEntity<ApiResponse<String>> stopSmtpServer(HttpServletRequest httpRequest) {
+        try {
+            requireAdmin(httpRequest);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
         try {
             if (!smtpServer.isRunning()) {
                 log.warn("SMTP服务器未在运行，无需停止");
@@ -208,7 +305,12 @@ public class AdminController {
     }
 
     @PostMapping("/server/pop3/start")
-    public ResponseEntity<ApiResponse<String>> startPop3Server() {
+    public ResponseEntity<ApiResponse<String>> startPop3Server(HttpServletRequest httpRequest) {
+        try {
+            requireAdmin(httpRequest);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
         try {
             if (pop3Server.isRunning()) {
                 log.warn("POP3服务器已在运行中，无需重复启动");
@@ -227,7 +329,12 @@ public class AdminController {
     }
 
     @PostMapping("/server/pop3/stop")
-    public ResponseEntity<ApiResponse<String>> stopPop3Server() {
+    public ResponseEntity<ApiResponse<String>> stopPop3Server(HttpServletRequest httpRequest) {
+        try {
+            requireAdmin(httpRequest);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
         try {
             if (!pop3Server.isRunning()) {
                 log.warn("POP3服务器未在运行，无需停止");
@@ -246,62 +353,112 @@ public class AdminController {
     }
 
     @GetMapping("/server/stats")
-    public ResponseEntity<ApiResponse<String>> getServerStats() {
+    public ResponseEntity<ApiResponse<String>> getServerStats(HttpServletRequest httpRequest) {
+        try {
+            requireAdmin(httpRequest);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
         String smtpStats = smtpServer.getStats();
         String pop3Stats = pop3Server.getStats();
         String stats = smtpStats + "；" + pop3Stats;
         return ResponseEntity.ok(new ApiResponse<>(true, stats, "服务器统计信息", null));
     }
 
+    @GetMapping("/logs")
+    public ResponseEntity<ApiResponse<List<SystemLog>>> getLogs(HttpServletRequest httpRequest,
+            @RequestParam(defaultValue = "200") int limit) {
+        try {
+            requireAdmin(httpRequest);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
+
+        int safeLimit = Math.max(1, Math.min(1000, limit));
+        var page = systemLogRepository.findAll(PageRequest.of(0, safeLimit, Sort.by(Sort.Direction.DESC, "id")));
+        return ResponseEntity.ok(new ApiResponse<>(true, page.getContent(), "获取日志成功", null));
+    }
+
+    @DeleteMapping("/logs")
+    public ResponseEntity<ApiResponse<String>> clearLogs(HttpServletRequest httpRequest) {
+        try {
+            requireAdmin(httpRequest);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
+
+        systemLogRepository.deleteAll();
+        return ResponseEntity.ok(new ApiResponse<>(true, "日志已清空", "清空成功", null));
+    }
+
     // --- 邮件群发 ---
 
     @PostMapping("/emails/broadcast")
-    public ResponseEntity<ApiResponse<String>> broadcastEmail(@RequestBody BroadcastRequest request) {
-        log.info("管理员群发邮件，主题：{}", request.getSubject());
-        
+    public ResponseEntity<ApiResponse<String>> broadcastEmail(HttpServletRequest httpRequest, @RequestBody BroadcastRequest request) {
+        final Account operator;
         try {
-            // 1. 获取所有有效用户邮箱
-            List<String> recipients = userRepository.findAll().stream()
-                    .filter(Account::getEnabled)
-                    .map(Account::getEmail)
-                    .collect(Collectors.toList());
-            
+            operator = requireAdmin(httpRequest);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
+
+        String content = request.getContent() != null ? request.getContent() : request.getBody();
+        if (request.getSubject() == null || request.getSubject().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "邮件主题不能为空", null));
+        }
+        if (content == null) {
+            content = "";
+        }
+
+        log.info("管理员群发邮件，主题：{}", request.getSubject());
+
+        try {
+            String senderEmail = operator.getEmail();
+
+            List<String> recipients;
+            if (request.getGroupId() != null) {
+                org.springframework.data.domain.Page<com.example.mailbox.entity.GroupMember> page =
+                        groupMemberRepository.findByGroupId(request.getGroupId(), Pageable.unpaged());
+                List<Long> accountIds = page.getContent().stream()
+                        .map(com.example.mailbox.entity.GroupMember::getAccountId)
+                        .collect(Collectors.toList());
+
+                if (accountIds.isEmpty()) {
+                    return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "群组暂无成员", null));
+                }
+
+                recipients = userRepository.findAllById(accountIds).stream()
+                        .filter(Account::isEnabled)
+                        .map(Account::getEmail)
+                        .collect(Collectors.toList());
+            } else {
+                recipients = userRepository.findAll().stream()
+                        .filter(Account::isEnabled)
+                        .map(Account::getEmail)
+                        .collect(Collectors.toList());
+            }
+
             if (recipients.isEmpty()) {
                 return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "没有可用的收件人", null));
             }
-            
-            // 2. 准备发送者凭证 (模拟 admin@mb.com)
-            String senderEmail = "admin@mb.com";
-            String token = jwtUtil.generateToken(senderEmail);
-            tokenService.storeToken(token, senderEmail, jwtUtil.getExpiration());
-            
-            // 3. 发送邮件
-            int successCount = 0;
-            int failureCount = 0;
-            
-            for (String recipient : recipients) {
-                try {
-                    boolean success = emailProtocolService.sendEmail(
-                            senderEmail, 
-                            token, 
-                            java.util.Collections.singletonList(recipient), 
-                            request.getSubject(), 
-                            request.getContent(),
-                            "127.0.0.1", 
-                            25, 
-                            false
-                    );
-                    if (success) successCount++; else failureCount++;
-                } catch (Exception e) {
-                    log.error("Failed to send broadcast to " + recipient, e);
-                    failureCount++;
-                }
+
+            Set<String> uniqueRecipients = new HashSet<>();
+            for (String r : recipients) {
+                if (r == null) continue;
+                if (senderEmail != null && r.equalsIgnoreCase(senderEmail)) continue;
+                uniqueRecipients.add(r);
             }
-            
-            return ResponseEntity.ok(new ApiResponse<>(true, 
-                    String.format("发送完成: 成功 %d, 失败 %d", successCount, failureCount), 
+
+            if (uniqueRecipients.isEmpty()) {
+                return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "没有可用的收件人", null));
+            }
+
+            List<String> to = new ArrayList<>(uniqueRecipients);
+            emailService.sendEmail(senderEmail, to, request.getSubject(), content, request.getAttachments());
+
+            return ResponseEntity.ok(new ApiResponse<>(true,
+                    String.format("发送完成: 收件人 %d", to.size()),
                     "群发完成", null));
-            
         } catch (Exception e) {
             log.error("群发邮件失败", e);
             return ResponseEntity.status(500).body(new ApiResponse<>(false, null, "群发邮件失败: " + e.getMessage(), null));
@@ -312,6 +469,9 @@ public class AdminController {
     public static class BroadcastRequest {
         private String subject;
         private String content;
+        private String body;
+        private List<AttachmentDTO> attachments;
+        private Long groupId;
     }
 
     @Data

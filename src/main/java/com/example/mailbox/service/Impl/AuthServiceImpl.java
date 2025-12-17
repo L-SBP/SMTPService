@@ -13,8 +13,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.util.Optional;
 
+import java.util.Optional;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 @Service
 public class AuthServiceImpl implements AuthService {
 
@@ -81,12 +84,18 @@ public class AuthServiceImpl implements AuthService {
         if (!passwordEncoder.matches(password, user.getPassword())) {
             throw new RuntimeException("用户名或密码错误");
         }
+        String token;
+        // 检查用户是否在redis中
+        if (tokenService.hasToken(user.getUsername())) {
+            token = tokenService.getTokenByUsername(user.getUsername());
+            log.info("用户已登录，使用缓存Token，用户ID：{}", user.getId());
+        } else {
+            token = jwtUtil.generateToken(user.getUsername());
 
-        String token = jwtUtil.generateToken(user.getEmail());
-
-        // 将Token存储到Redis
-        long expiration = jwtUtil.getExpiration();
-        tokenService.storeToken(token, user.getEmail(), expiration);
+            // 将Token存储到Redis
+            long expiration = jwtUtil.getExpiration();
+            tokenService.storeToken(token, user.getUsername(), expiration);
+        }
 
         // 构建用户信息
         UserInfoVO userInfoVO = new UserInfoVO();

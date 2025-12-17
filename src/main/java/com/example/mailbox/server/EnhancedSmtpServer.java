@@ -26,6 +26,7 @@ import jakarta.annotation.PreDestroy;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -261,9 +262,23 @@ public class EnhancedSmtpServer {
         @Override
         public void run() {
             try {
+                // 检查socket是否有效
+                if (socket == null || socket.isClosed() || socket.isInputShutdown()) {
+                    log.warn("无效的客户端连接: " + clientIp);
+                    return;
+                }
+                
                 initStreams();
                 sendWelcomeMessage();
                 handleSession();
+            } catch (java.net.SocketException e) {
+                // Socket异常（连接已关闭）
+                log.debug("客户端连接已关闭: " + clientIp + " - " + e.getMessage());
+                saveLog(SystemLog.LogType.SMTP, 
+                        authenticatedUser != null ? authenticatedUser : clientIp, 
+                        "DISCONNECT", 
+                        "Connection closed: " + e.getMessage(), 
+                        "SUCCESS");
             } catch (Exception e) {
                 log.error("SMTP Handler Error for client " + clientIp, e);
                 saveLog(SystemLog.LogType.SMTP, clientIp, "SESSION", "Error: " + e.getMessage(), "FAILURE");
@@ -284,17 +299,49 @@ public class EnhancedSmtpServer {
 
         private void handleSession() throws IOException {
             String line;
-            while ((line = reader.readLine()) != null) {
-                commandCount++;
-                if (commandCount > 1000) {
-                    sendErrorResponse("421 Too many commands, closing connection");
+            while (running && !socket.isClosed()) {
+                try {
+                    line = reader.readLine();
+                    if (line == null) {
+                        // 客户端断开连接
+                        log.info("客户端主动断开连接: " + clientIp);
+                        saveLog(SystemLog.LogType.SMTP, 
+                                authenticatedUser != null ? authenticatedUser : clientIp, 
+                                "DISCONNECT", 
+                                "Client disconnected", 
+                                "SUCCESS");
+                        break;
+                    }
+                    
+                    commandCount++;
+                    if (commandCount > 1000) {
+                        sendErrorResponse("421 Too many commands, closing connection");
+                        break;
+                    }
+                    
+                    if (isDataMode) {
+                        handleDataLine(line);
+                    } else {
+                        handleCommand(line);
+                    }
+                } catch (java.net.SocketException e) {
+                    // 客户端连接已关闭
+                    log.info("客户端连接已关闭: " + clientIp);
+                    saveLog(SystemLog.LogType.SMTP, 
+                            authenticatedUser != null ? authenticatedUser : clientIp, 
+                            "DISCONNECT", 
+                            "Connection closed by client: " + e.getMessage(), 
+                            "SUCCESS");
                     break;
-                }
-                
-                if (isDataMode) {
-                    handleDataLine(line);
-                } else {
-                    handleCommand(line);
+                } catch (IOException e) {
+                    // 其他IO异常
+                    log.error("处理客户端命令时发生IO错误: " + clientIp, e);
+                    saveLog(SystemLog.LogType.SMTP, 
+                            authenticatedUser != null ? authenticatedUser : clientIp, 
+                            "ERROR", 
+                            "IO Error: " + e.getMessage(), 
+                            "FAILURE");
+                    break;
                 }
             }
         }
@@ -774,20 +821,30 @@ public class EnhancedSmtpServer {
 
         private void cleanup() {
             try {
-                if (socket != null && !socket.isClosed()) {
-                    socket.close();
-                }
+                // 先关闭流，再关闭socket
                 if (reader != null) {
-                    reader.close();
+                    try {
+                        reader.close();
+                    } catch (IOException e) {
+                        log.debug("关闭reader时发生错误: " + clientIp, e);
+                    }
                 }
                 if (writer != null) {
                     writer.close();
                 }
-            } catch (IOException e) {
-                log.error("清理连接资源时发生错误", e);
+                if (socket != null && !socket.isClosed()) {
+                    try {
+                        socket.close();
+                    } catch (IOException e) {
+                        log.debug("关闭socket时发生错误: " + clientIp, e);
+                    }
+                }
+            } catch (Exception e) {
+                log.error("清理连接资源时发生错误: " + clientIp, e);
             } finally {
                 connectionCount.decrementAndGet();
-                log.info("客户端连接已关闭: " + clientIp);
+                log.debug("客户端连接已关闭: " + clientIp + 
+                         (authenticatedUser != null ? " (用户: " + authenticatedUser + ")" : ""));
             }
         }
 

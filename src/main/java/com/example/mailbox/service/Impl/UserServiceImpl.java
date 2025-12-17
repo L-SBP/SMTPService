@@ -1,7 +1,10 @@
 package com.example.mailbox.service.Impl;
 
 import com.example.mailbox.entity.Account;
+import com.example.mailbox.entity.Email;
+import com.example.mailbox.repository.EmailRepository;
 import com.example.mailbox.repository.UserRepository;
+import com.example.mailbox.service.EmailService;
 import com.example.mailbox.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +18,9 @@ public class UserServiceImpl implements UserService {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private EmailRepository emailRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -56,5 +62,30 @@ public class UserServiceImpl implements UserService {
 
         userRepository.save(user);
         log.info("密码修改成功");
+    }
+
+    @Override
+    @Transactional
+    public void markAsStarred(Long emailId, String email, Boolean isStarred) {
+        log.info("标记邮件星标: emailId={}, email={}, isStarred={}", emailId, email, isStarred);
+        
+        // 1. 通过邮箱查找用户
+        Account user = userRepository.findByEmail(email)
+            .orElseThrow(() -> new RuntimeException("用户不存在"));
+
+        // 2. 查找邮件
+        Email emailEntity = emailRepository.findById(emailId)
+            .orElseThrow(() -> new RuntimeException("邮件不存在"));
+
+        // 3. 验证邮件是否属于该用户
+        if (!emailEntity.getUser().getId().equals(user.getId())) {
+            throw new RuntimeException("无权限操作该邮件");
+        }
+
+        // 4. 更新星标状态
+        emailEntity.setStarred(isStarred);
+        emailRepository.save(emailEntity);
+        
+        log.info("邮件星标标记成功: emailId={}, isStarred={}", emailId, isStarred);
     }
 }

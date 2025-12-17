@@ -30,18 +30,34 @@ public class UserController {
 
     @GetMapping("/profile")
     public ResponseEntity<ApiResponse<Account>> getProfile(HttpServletRequest request) {
-        log.info("获取用户资料请求");
+        log.info("=== 获取用户资料请求开始 ===");
+        log.info("请求方法: GET");
+        log.info("请求路径: {}", request.getRequestURI());
+        log.info("请求参数: {}", request.getQueryString());
+        log.info("请求头信息:");
+        
+        // 打印所有请求头
+        request.getHeaderNames().asIterator().forEachRemaining(headerName -> {
+            String headerValue = request.getHeader(headerName);
+            log.info("  {}: {}", headerName, headerValue);
+        });
+        
         try {
             String authHeader = request.getHeader("Authorization");
+            log.info("Authorization头值: {}", authHeader);
+            
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                log.warn("无效的认证头信息");
+                log.warn("无效的认证头信息 - authHeader: {}", authHeader);
                 return ResponseEntity.badRequest().body(new ApiResponse<>(
                         false, null, "未提供认证信息", null
                 ));
             }
 
             String token = authHeader.substring(7);
+            log.info("提取的Token: {}", token);
+            
             String identifier = jwtUtil.extractUsername(token);
+            log.info("从Token提取的用户名/邮箱: {}", identifier);
 
             Account currentUser = userService.getUserByEmail(identifier);
             if (currentUser == null) {
@@ -52,13 +68,20 @@ public class UserController {
             }
 
             log.info("成功获取用户资料: {}", identifier);
+            log.info("用户信息: id={}, username={}, email={}, isAdmin={}", 
+                    currentUser.getId(), currentUser.getUsername(), 
+                    currentUser.getEmail(), currentUser.getIsAdmin());
+            
             ApiResponse<Account> response = new ApiResponse<>(
                     true, currentUser, "用户资料获取成功", null
             );
 
+            log.info("=== 获取用户资料请求结束 - 成功 ===");
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("获取用户资料失败", e);
+            log.error("异常详细信息: {}", e.getMessage());
+            log.error("异常堆栈: ", e);
             return ResponseEntity.badRequest().body(new ApiResponse<>(
                     false, null, "获取用户资料失败: " + e.getMessage(), null
             ));
@@ -145,6 +168,51 @@ public class UserController {
                     false, null, "修改失败: " + e.getMessage(), null
             ));
         }
+    }
+
+    /**
+     * 标记邮件为星标/取消星标
+     */
+    @PutMapping("/emails/{emailId}/star")
+    public ResponseEntity<ApiResponse<String>> toggleStarred(@PathVariable Long emailId, 
+                                                           @RequestBody StarRequest request,
+                                                           HttpServletRequest httpRequest) {
+        log.info("标记邮件星标请求: emailId={}, isStarred={}", emailId, request.getIsStarred());
+        try {
+            String authHeader = httpRequest.getHeader("Authorization");
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                log.warn("无效的认证头信息");
+                return ResponseEntity.badRequest().body(new ApiResponse<>(
+                        false, null, "未提供认证信息", null
+                ));
+            }
+
+            String token = authHeader.substring(7);
+            String email = jwtUtil.extractUsername(token);
+
+            // 调用 Service 标记星标
+            userService.markAsStarred(emailId, email, request.getIsStarred());
+            log.info("邮件星标标记成功: emailId={}, email={}, isStarred={}", 
+                    emailId, email, request.getIsStarred());
+
+            String message = request.getIsStarred() ? "邮件已标记为星标" : "邮件已取消星标";
+            return ResponseEntity.ok(new ApiResponse<>(
+                    true, message, message, null
+            ));
+        } catch (Exception e) {
+            log.error("标记邮件星标失败", e);
+            return ResponseEntity.badRequest().body(new ApiResponse<>(
+                    false, null, "标记失败: " + e.getMessage(), null
+            ));
+        }
+    }
+
+    // 星标请求DTO
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class StarRequest {
+        private Boolean isStarred;
     }
 
     // 密码修改请求DTO

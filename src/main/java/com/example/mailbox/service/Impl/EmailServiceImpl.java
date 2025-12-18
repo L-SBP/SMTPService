@@ -6,9 +6,11 @@ import com.example.mailbox.repository.EmailRepository;
 import com.example.mailbox.repository.UserRepository;
 import com.example.mailbox.service.EmailProtocolService;
 import com.example.mailbox.service.EmailService;
+import com.example.mailbox.service.OutboundEmailService;
 import com.example.mailbox.service.TokenService;
 import com.example.mailbox.util.JwtUtil;
 import com.example.mailbox.vo.Page;
+import com.example.mailbox.config.OutboundSmtpProperties;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -31,7 +33,7 @@ public class EmailServiceImpl implements EmailService {
 
     @Autowired
     private UserRepository userRepository;
-    
+
     @Autowired
     private AttachmentRepository attachmentRepository;
 
@@ -40,28 +42,38 @@ public class EmailServiceImpl implements EmailService {
 
     @Autowired
     private JwtUtil jwtUtil;
-    
+
     @Autowired
     private TokenService tokenService;
 
+    @Autowired
+    private OutboundSmtpProperties outboundSmtpProperties;
+
+    @Autowired
+    private OutboundEmailService outboundEmailService;
+
     @Override
     public Page<Email> getInbox(String email, Pageable pageable) {
-        return convertToPage(emailRepository.findByUserEmailAndFolderTypeOrderByReceivedTimeDesc(email, FolderType.INBOX, pageable));
+        return convertToPage(
+                emailRepository.findByUserEmailAndFolderTypeOrderByReceivedTimeDesc(email, FolderType.INBOX, pageable));
     }
 
     @Override
     public Page<Email> getSent(String email, Pageable pageable) {
-        return convertToPage(emailRepository.findByUserEmailAndFolderTypeOrderByReceivedTimeDesc(email, FolderType.SENT, pageable));
+        return convertToPage(
+                emailRepository.findByUserEmailAndFolderTypeOrderByReceivedTimeDesc(email, FolderType.SENT, pageable));
     }
-    
+
     @Override
     public Page<Email> getDrafts(String email, Pageable pageable) {
-        return convertToPage(emailRepository.findByUserEmailAndFolderTypeOrderByReceivedTimeDesc(email, FolderType.DRAFT, pageable));
+        return convertToPage(
+                emailRepository.findByUserEmailAndFolderTypeOrderByReceivedTimeDesc(email, FolderType.DRAFT, pageable));
     }
 
     @Override
     public Page<Email> getTrash(String email, Pageable pageable) {
-        return convertToPage(emailRepository.findByUserEmailAndFolderTypeOrderByReceivedTimeDesc(email, FolderType.TRASH, pageable));
+        return convertToPage(
+                emailRepository.findByUserEmailAndFolderTypeOrderByReceivedTimeDesc(email, FolderType.TRASH, pageable));
     }
 
     @Override
@@ -73,11 +85,11 @@ public class EmailServiceImpl implements EmailService {
     public Email getEmailById(Long id, String email) {
         Email emailEntity = emailRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("邮件不存在"));
-        
+
         if (!emailEntity.getUser().getEmail().equals(email)) {
             throw new RuntimeException("无权访问该邮件");
         }
-        
+
         return emailEntity;
     }
 
@@ -89,21 +101,17 @@ public class EmailServiceImpl implements EmailService {
 
     @Override
     @Transactional
-    public void sendEmail(String senderEmail, List<String> to, String subject, String body, List<AttachmentDTO> attachmentDTOs) {
+    public void sendEmail(String senderEmail, List<String> to, String subject, String body,
+            List<AttachmentDTO> attachmentDTOs) {
         com.example.mailbox.entity.Account user = userRepository.findByEmail(senderEmail)
                 .orElseThrow(() -> new RuntimeException("用户不存在"));
 
-        // 获取SMTP配置
-        var config = emailProtocolService.getSmtpConfig(senderEmail);
-        
-        // 生成用于SMTP认证的临时Token
-        String token = jwtUtil.generateToken(senderEmail);
-        tokenService.storeToken(token, senderEmail, jwtUtil.getExpiration());
+        boolean hasExternal = hasExternalRecipient(to);
 
         // 准备附件文件
         List<File> attachmentFiles = new ArrayList<>();
         List<Attachment> attachments = new ArrayList<>();
-        
+
         if (attachmentDTOs != null && !attachmentDTOs.isEmpty()) {
             for (AttachmentDTO dto : attachmentDTOs) {
                 File file = null;
@@ -125,27 +133,51 @@ public class EmailServiceImpl implements EmailService {
                         System.out.println("添加附件: " + file.getAbsolutePath());
                     } else {
                         System.err.println("附件文件不存在: " + file.getAbsolutePath());
-                        // 如果是必须的附件，这里可以抛出异常，或者忽略
                     }
                 }
             }
         }
 
-        // 调用协议服务发送
-        System.out.println("开始调用SMTP服务发送邮件: sender=" + senderEmail + ", token=" + token.substring(0, 10) + "...");
         boolean success = false;
         try {
-            success = emailProtocolService.sendEmail(
-                senderEmail, 
-                token, 
-                to, 
-                subject, 
-                body, 
-                attachmentFiles, // 传入附件文件
-                config.getHost(), 
-                config.getPort(), 
-                config.isSsl()
-            );
+            if (hasExternal) {
+                // 使用 OutboundEmailService 发送外部邮件
+                OutboundEmailService.SendResult result = outboundEmailService.sendToExternal(
+                        senderEmail,
+                        to,
+                        null, // cc
+                        null, // bcc
+                        subject,
+                        body,
+                        attachmentDTOs,
+                        false // 纯文本
+                );
+
+                if (!result.isSuccess()) {
+                    throw new RuntimeException(result.getMessage());
+                }
+                // 外发邮件的保存由 OutboundEmailService 内部处理
+                return;
+            } else {
+                // 内部收件人：走本地自定义SMTP服务器（token认证）
+                var config = emailProtocolService.getSmtpConfig(senderEmail);
+
+                String token = jwtUtil.generateToken(senderEmail);
+                tokenService.storeToken(token, senderEmail, jwtUtil.getExpiration());
+
+                System.out.println(
+                        "开始调用本地SMTP服务发送邮件: sender=" + senderEmail + ", token=" + token.substring(0, 10) + "...");
+                success = emailProtocolService.sendEmail(
+                        senderEmail,
+                        token,
+                        to,
+                        subject,
+                        body,
+                        attachmentFiles,
+                        config.getHost(),
+                        config.getPort(),
+                        config.isSsl());
+            }
         } catch (Exception e) {
             System.err.println("SMTP发送异常: " + e.getMessage());
             e.printStackTrace();
@@ -156,7 +188,7 @@ public class EmailServiceImpl implements EmailService {
             throw new RuntimeException("邮件发送失败");
         }
 
-        // 保存到已发送
+        // 保存到已发送（仅内部邮件，外部邮件由 OutboundEmailService 处理）
         Email email = new Email();
         email.setSender(senderEmail);
         email.setRecipients(to);
@@ -167,9 +199,9 @@ public class EmailServiceImpl implements EmailService {
         email.setReceivedTime(java.time.LocalDateTime.now());
         email.setRead(true);
         email.setHasAttachment(!attachments.isEmpty());
-        
+
         Email savedEmail = emailRepository.save(email);
-        
+
         // 关联附件到邮件
         for (Attachment attachment : attachments) {
             attachment.setEmail(savedEmail);
@@ -192,6 +224,22 @@ public class EmailServiceImpl implements EmailService {
         }
     }
 
+    private boolean hasExternalRecipient(List<String> recipients) {
+        if (recipients == null || recipients.isEmpty()) {
+            return false;
+        }
+        for (String recipient : recipients) {
+            if (recipient == null) {
+                continue;
+            }
+            String normalized = recipient.trim().toLowerCase();
+            if (!normalized.endsWith("@mb.com")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     public void saveDraft(String senderEmail, List<String> to, String subject, String body) {
         com.example.mailbox.entity.Account user = userRepository.findByEmail(senderEmail)
@@ -208,7 +256,7 @@ public class EmailServiceImpl implements EmailService {
         email.setRead(true);
         emailRepository.save(email);
     }
-    
+
     @Override
     public void markAsRead(Long id, String email, Boolean isRead) {
         Email emailEntity = getEmailById(id, email);
@@ -242,13 +290,12 @@ public class EmailServiceImpl implements EmailService {
 
     private Page<Email> convertToPage(org.springframework.data.domain.Page<Email> springPage) {
         return new Page<>(
-            springPage.getContent(),
-            springPage.getTotalElements(),
-            springPage.getTotalPages(),
-            springPage.getSize(),
-            springPage.getNumber(),
-            springPage.isFirst(),
-            springPage.isLast()
-        );
+                springPage.getContent(),
+                springPage.getTotalElements(),
+                springPage.getTotalPages(),
+                springPage.getSize(),
+                springPage.getNumber(),
+                springPage.isFirst(),
+                springPage.isLast());
     }
 }

@@ -42,6 +42,6 @@ public class SystemLog {
     }
 
     public enum LogType {
-        SMTP, POP3, SYSTEM, ADMIN
+        SMTP, POP3, SYSTEM, ADMIN, OUTBOUND, INBOUND
     }
 }

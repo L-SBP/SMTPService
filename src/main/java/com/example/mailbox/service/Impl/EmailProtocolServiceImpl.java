@@ -47,7 +47,7 @@ public class EmailProtocolServiceImpl implements EmailProtocolService {
             props.put("mail.pop3.auth", "true");
             // 同样禁用STARTTLS，避免本地服务器不支持导致的问题
             props.put("mail.pop3.starttls.enable", "false");
-            
+
             if (ssl) {
                 props.put("mail.pop3.ssl.enable", "true");
                 props.put("mail.pop3.socketFactory.class", "javax.net.ssl.SSLSocketFactory");
@@ -100,44 +100,53 @@ public class EmailProtocolServiceImpl implements EmailProtocolService {
         return emails;
     }
 
-
     @Override
-    public boolean sendEmail(String senderEmail, String password, List<String> recipients, String subject, String content, String host, int port, boolean ssl) {
+    public boolean sendEmail(String senderEmail, String password, List<String> recipients, String subject,
+            String content, String host, int port, boolean ssl) {
         return sendEmail(senderEmail, password, recipients, subject, content, null, host, port, ssl);
     }
 
     @Override
-    public boolean sendEmail(String senderEmail, String password, List<String> recipients, String subject, String content, List<File> attachments, String host, int port, boolean ssl) {
+    public boolean sendEmail(String senderEmail, String password, List<String> recipients, String subject,
+            String content, List<File> attachments, String host, int port, boolean ssl) {
+        // 兼容旧接口：默认禁用STARTTLS（适配本地自定义SMTP服务器）
+        return sendEmailWithAuth(senderEmail, senderEmail, password, recipients, subject, content, attachments, host,
+                port, ssl, false);
+    }
+
+    @Override
+    public boolean sendEmailWithAuth(String fromEmail, String authUser, String authPassword, List<String> recipients,
+            String subject, String content, List<File> attachments, String host, int port, boolean ssl,
+            boolean starttls) {
         try {
-            // 配置SMTP属性
             Properties props = new Properties();
             props.put("mail.smtp.auth", "true");
-            // 本地自定义服务器不支持STARTTLS升级，必须禁用
-            props.put("mail.smtp.starttls.enable", "false");
             props.put("mail.smtp.host", host);
             props.put("mail.smtp.port", String.valueOf(port));
             props.put("mail.smtp.ssl.trust", "*");
+
+            // SSL(465) 与 STARTTLS(587) 二选一为主：按调用方参数配置
+            props.put("mail.smtp.starttls.enable", String.valueOf(starttls));
+            if (starttls) {
+                props.put("mail.smtp.starttls.required", "true");
+            }
 
             if (ssl) {
                 props.put("mail.smtp.ssl.enable", "true");
                 props.put("mail.smtp.socketFactory.class", "javax.net.ssl.SSLSocketFactory");
             }
 
-            // 创建会话
             Session session = Session.getInstance(props, new Authenticator() {
                 @Override
                 protected PasswordAuthentication getPasswordAuthentication() {
-                    return new PasswordAuthentication(senderEmail, password);
+                    return new PasswordAuthentication(authUser, authPassword);
                 }
             });
+            session.setDebug(false);
 
-            session.setDebug(false); // 生产环境关闭调试
-
-            // 创建邮件
             MimeMessage message = new MimeMessage(session);
-            message.setFrom(new InternetAddress(senderEmail));
-            
-            // 设置收件人
+            message.setFrom(new InternetAddress(fromEmail));
+
             if (recipients != null && !recipients.isEmpty()) {
                 Address[] addresses = new Address[recipients.size()];
                 for (int i = 0; i < recipients.size(); i++) {
@@ -145,18 +154,15 @@ public class EmailProtocolServiceImpl implements EmailProtocolService {
                 }
                 message.setRecipients(Message.RecipientType.TO, addresses);
             }
-            
+
             message.setSubject(subject);
 
-            // 构建复合消息体
             Multipart multipart = new MimeMultipart();
 
-            // 1. 文本部分
             MimeBodyPart textPart = new MimeBodyPart();
             textPart.setText(content, "UTF-8");
             multipart.addBodyPart(textPart);
 
-            // 2. 附件部分
             if (attachments != null && !attachments.isEmpty()) {
                 for (File file : attachments) {
                     if (file.exists()) {
@@ -169,13 +175,9 @@ public class EmailProtocolServiceImpl implements EmailProtocolService {
                 }
             }
 
-            // 设置消息内容
             message.setContent(multipart);
-
-            // 发送邮件
             Transport.send(message);
-            log.info("邮件发送成功: {} -> {}", senderEmail, recipients);
-
+            log.info("邮件发送成功: {} (auth={}) -> {}", fromEmail, authUser, recipients);
             return true;
 
         } catch (Exception e) {
@@ -204,13 +206,13 @@ public class EmailProtocolServiceImpl implements EmailProtocolService {
     private Email parseMessageToEmail(Message message, String userEmail) throws MessagingException, IOException {
         try {
             Email emailEntity = new Email();
-            
+
             // 发件人
             Address[] from = message.getFrom();
             if (from != null && from.length > 0) {
                 emailEntity.setSender(((InternetAddress) from[0]).getAddress());
             }
-            
+
             // 收件人
             Address[] to = message.getRecipients(Message.RecipientType.TO);
             if (to != null) {
@@ -220,7 +222,7 @@ public class EmailProtocolServiceImpl implements EmailProtocolService {
                 }
                 emailEntity.setRecipients(toList);
             }
-            
+
             // 抄送
             Address[] cc = message.getRecipients(Message.RecipientType.CC);
             if (cc != null) {
@@ -230,7 +232,7 @@ public class EmailProtocolServiceImpl implements EmailProtocolService {
                 }
                 emailEntity.setCc(ccList);
             }
-            
+
             // 密送
             Address[] bcc = message.getRecipients(Message.RecipientType.BCC);
             if (bcc != null) {
@@ -240,10 +242,10 @@ public class EmailProtocolServiceImpl implements EmailProtocolService {
                 }
                 emailEntity.setBcc(bccList);
             }
-            
+
             // 主题
             emailEntity.setSubject(message.getSubject());
-            
+
             // 内容
             Object content = message.getContent();
             if (content instanceof String) {
@@ -251,32 +253,33 @@ public class EmailProtocolServiceImpl implements EmailProtocolService {
             } else if (content instanceof Multipart) {
                 emailEntity.setBody(extractTextFromMultipart((Multipart) content));
             }
-            
+
             // 附件标志
             emailEntity.setHasAttachment(message.getContentType().toLowerCase().contains("multipart"));
-            
+
             // 已读标志
             emailEntity.setRead(message.isSet(Flags.Flag.SEEN));
-            
+
             // 星标标志
             emailEntity.setStarred(message.isSet(Flags.Flag.FLAGGED));
-            
+
             // 大小
             emailEntity.setSize(message.getSize());
-            
+
             // 接收时间
-            emailEntity.setReceivedTime(message.getReceivedDate().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime());
-            
+            emailEntity.setReceivedTime(
+                    message.getReceivedDate().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime());
+
             // 文件夹类型
             emailEntity.setFolderType(FolderType.INBOX);
-            
+
             // 关联用户
             Account user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new RuntimeException("用户不存在: " + userEmail));
+                    .orElseThrow(() -> new RuntimeException("用户不存在: " + userEmail));
             emailEntity.setUser(user);
-            
+
             return emailEntity;
-            
+
         } catch (Exception e) {
             log.error("解析邮件内容失败: {}", e.getMessage());
             return null; // 跳过这封邮件

@@ -44,14 +44,22 @@ import org.springframework.dao.DataIntegrityViolationException;
 @Slf4j
 public class AdminController {
 
-    @Autowired private UserRepository userRepository;
-    @Autowired private BlacklistRepository blacklistRepository;
-    @Autowired private SystemLogRepository systemLogRepository;
-    @Autowired private GroupMemberRepository groupMemberRepository;
-    @Autowired private EmailService emailService;
-    @Autowired private JwtUtil jwtUtil;
-    @Autowired private TokenService tokenService;
-    @Autowired private PasswordEncoder passwordEncoder;
+    @Autowired
+    private UserRepository userRepository;
+    @Autowired
+    private BlacklistRepository blacklistRepository;
+    @Autowired
+    private SystemLogRepository systemLogRepository;
+    @Autowired
+    private GroupMemberRepository groupMemberRepository;
+    @Autowired
+    private EmailService emailService;
+    @Autowired
+    private JwtUtil jwtUtil;
+    @Autowired
+    private TokenService tokenService;
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     private Account requireAdmin(HttpServletRequest request) {
         String authHeader = request.getHeader("Authorization");
@@ -82,7 +90,8 @@ public class AdminController {
     // --- 用户管理 ---
 
     @PostMapping("/users")
-    public ResponseEntity<ApiResponse<Account>> createUser(HttpServletRequest httpRequest, @RequestBody CreateUserRequest request) {
+    public ResponseEntity<ApiResponse<Account>> createUser(HttpServletRequest httpRequest,
+            @RequestBody CreateUserRequest request) {
         try {
             requireAdmin(httpRequest);
         } catch (Exception e) {
@@ -115,7 +124,7 @@ public class AdminController {
         log.info("用户创建成功，ID：{}", savedUser.getId());
         return ResponseEntity.ok(new ApiResponse<>(true, savedUser, "用户创建成功", null));
     }
-    
+
     @DeleteMapping("/users/{id}")
     public ResponseEntity<ApiResponse<String>> deleteUser(HttpServletRequest httpRequest, @PathVariable Long id) {
         Account operator;
@@ -137,7 +146,8 @@ public class AdminController {
     }
 
     @PutMapping("/users/{id}/role")
-    public ResponseEntity<ApiResponse<String>> updateUserRole(HttpServletRequest httpRequest, @PathVariable Long id, @RequestParam Boolean isAdmin) {
+    public ResponseEntity<ApiResponse<String>> updateUserRole(HttpServletRequest httpRequest, @PathVariable Long id,
+            @RequestParam Boolean isAdmin) {
         Account operator;
         try {
             operator = requireAdmin(httpRequest);
@@ -158,7 +168,8 @@ public class AdminController {
     }
 
     @GetMapping("/users")
-    public ResponseEntity<ApiResponse<Page<Account>>> getAllUsers(HttpServletRequest httpRequest, @RequestParam(defaultValue = "0") int page,
+    public ResponseEntity<ApiResponse<Page<Account>>> getAllUsers(HttpServletRequest httpRequest,
+            @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         try {
             requireAdmin(httpRequest);
@@ -176,14 +187,14 @@ public class AdminController {
                 usersPage.getSize(),
                 usersPage.getNumber(),
                 usersPage.isFirst(),
-                usersPage.isLast()
-        );
+                usersPage.isLast());
         log.info("成功获取用户列表，总数：{}", usersPage.getTotalElements());
         return ResponseEntity.ok(new ApiResponse<>(true, responsePage, "获取用户列表成功", null));
     }
 
     @PutMapping("/users/{id}/status")
-    public ResponseEntity<ApiResponse<String>> updateUserStatus(HttpServletRequest httpRequest, @PathVariable Long id, @RequestParam Boolean enabled) {
+    public ResponseEntity<ApiResponse<String>> updateUserStatus(HttpServletRequest httpRequest, @PathVariable Long id,
+            @RequestParam Boolean enabled) {
         try {
             requireAdmin(httpRequest);
         } catch (Exception e) {
@@ -200,7 +211,8 @@ public class AdminController {
     }
 
     @PutMapping("/users/{id}/password")
-    public ResponseEntity<ApiResponse<String>> resetUserPassword(HttpServletRequest httpRequest, @PathVariable Long id, @RequestBody ResetUserPasswordRequest request) {
+    public ResponseEntity<ApiResponse<String>> resetUserPassword(HttpServletRequest httpRequest, @PathVariable Long id,
+            @RequestBody ResetUserPasswordRequest request) {
         try {
             requireAdmin(httpRequest);
         } catch (Exception e) {
@@ -243,7 +255,8 @@ public class AdminController {
     }
 
     @PostMapping("/blacklist")
-    public ResponseEntity<ApiResponse<Blacklist>> addToBlacklist(HttpServletRequest httpRequest, @RequestBody BlacklistRequest request) {
+    public ResponseEntity<ApiResponse<Blacklist>> addToBlacklist(HttpServletRequest httpRequest,
+            @RequestBody BlacklistRequest request) {
         try {
             requireAdmin(httpRequest);
         } catch (Exception e) {
@@ -279,7 +292,8 @@ public class AdminController {
     }
 
     @DeleteMapping("/blacklist/{id}")
-    public ResponseEntity<ApiResponse<String>> removeFromBlacklist(HttpServletRequest httpRequest, @PathVariable Long id) {
+    public ResponseEntity<ApiResponse<String>> removeFromBlacklist(HttpServletRequest httpRequest,
+            @PathVariable Long id) {
         try {
             requireAdmin(httpRequest);
         } catch (Exception e) {
@@ -292,16 +306,16 @@ public class AdminController {
     }
 
     // --- 服务器管理 ---
-    
+
     @Autowired
     private EnhancedSmtpServer smtpServer;
-    
+
     @Autowired
     private EnhancedPop3Server pop3Server;
-    
+
     @Autowired
     private com.example.mailbox.service.EmailProtocolService emailProtocolService;
-    
+
     @GetMapping("/server/status")
     public ResponseEntity<ApiResponse<String>> getServerStatus(HttpServletRequest httpRequest) {
         try {
@@ -326,16 +340,16 @@ public class AdminController {
             if (smtpServer.isRunning()) {
                 log.warn("SMTP服务器已在运行中，无需重复启动");
                 return ResponseEntity.badRequest().body(
-                    new ApiResponse<>(false, null, "SMTP服务器已在运行中", null)
-                );
+                        new ApiResponse<>(false, null, "SMTP服务器已在运行中", null));
             }
-            
+
             smtpServer.startServer();
             log.info("SMTP服务器启动成功");
             return ResponseEntity.ok(new ApiResponse<>(true, "SMTP服务器启动成功", "服务器已启动", null));
         } catch (Exception e) {
             log.error("启动SMTP服务器失败", e);
-            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "启动SMTP服务器失败: " + e.getMessage(), null));
+            return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, null, "启动SMTP服务器失败: " + e.getMessage(), null));
         }
     }
 
@@ -350,16 +364,16 @@ public class AdminController {
             if (!smtpServer.isRunning()) {
                 log.warn("SMTP服务器未在运行，无需停止");
                 return ResponseEntity.badRequest().body(
-                    new ApiResponse<>(false, null, "SMTP服务器未在运行", null)
-                );
+                        new ApiResponse<>(false, null, "SMTP服务器未在运行", null));
             }
-            
+
             smtpServer.stopServer();
             log.info("SMTP服务器停止成功");
             return ResponseEntity.ok(new ApiResponse<>(true, "SMTP服务器停止成功", "服务器已停止", null));
         } catch (Exception e) {
             log.error("停止SMTP服务器失败", e);
-            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "停止SMTP服务器失败: " + e.getMessage(), null));
+            return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, null, "停止SMTP服务器失败: " + e.getMessage(), null));
         }
     }
 
@@ -374,16 +388,16 @@ public class AdminController {
             if (pop3Server.isRunning()) {
                 log.warn("POP3服务器已在运行中，无需重复启动");
                 return ResponseEntity.badRequest().body(
-                    new ApiResponse<>(false, null, "POP3服务器已在运行中", null)
-                );
+                        new ApiResponse<>(false, null, "POP3服务器已在运行中", null));
             }
-            
+
             pop3Server.startServer();
             log.info("POP3服务器启动成功");
             return ResponseEntity.ok(new ApiResponse<>(true, "POP3服务器启动成功", "服务器已启动", null));
         } catch (Exception e) {
             log.error("启动POP3服务器失败", e);
-            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "启动POP3服务器失败: " + e.getMessage(), null));
+            return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, null, "启动POP3服务器失败: " + e.getMessage(), null));
         }
     }
 
@@ -398,44 +412,138 @@ public class AdminController {
             if (!pop3Server.isRunning()) {
                 log.warn("POP3服务器未在运行，无需停止");
                 return ResponseEntity.badRequest().body(
-                    new ApiResponse<>(false, null, "POP3服务器未在运行", null)
-                );
+                        new ApiResponse<>(false, null, "POP3服务器未在运行", null));
             }
-            
+
             pop3Server.stopServer();
             log.info("POP3服务器停止成功");
             return ResponseEntity.ok(new ApiResponse<>(true, "POP3服务器停止成功", "服务器已停止", null));
         } catch (Exception e) {
             log.error("停止POP3服务器失败", e);
-            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "停止POP3服务器失败: " + e.getMessage(), null));
+            return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, null, "停止POP3服务器失败: " + e.getMessage(), null));
         }
     }
 
     @GetMapping("/server/stats")
-    public ResponseEntity<ApiResponse<String>> getServerStats(HttpServletRequest httpRequest) {
+    public ResponseEntity<ApiResponse<ServerStatsResponse>> getServerStats(HttpServletRequest httpRequest) {
         try {
             requireAdmin(httpRequest);
         } catch (Exception e) {
             return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
         }
-        String smtpStats = smtpServer.getStats();
-        String pop3Stats = pop3Server.getStats();
-        String stats = smtpStats + "；" + pop3Stats;
+
+        ServerStatsResponse stats = new ServerStatsResponse();
+
+        // SMTP 和 POP3 服务器状态
+        stats.setSmtpRunning(smtpServer.isRunning());
+        stats.setPop3Running(pop3Server.isRunning());
+        stats.setSmtpStats(smtpServer.getStats());
+        stats.setPop3Stats(pop3Server.getStats());
+
+        // 统计日志数据
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        java.time.LocalDateTime last24h = now.minusHours(24);
+        java.time.LocalDateTime last1h = now.minusHours(1);
+
+        // 总日志数
+        stats.setTotalLogs(systemLogRepository.count());
+
+        // 最近24小时日志数
+        stats.setLogs24h(systemLogRepository.countSince(last24h));
+
+        // 最近1小时日志数
+        stats.setLogs1h(systemLogRepository.countSince(last1h));
+
+        // 按类型统计
+        List<Object[]> typeCounts = systemLogRepository.countByType();
+        java.util.Map<String, Long> logsByType = new java.util.HashMap<>();
+        for (Object[] row : typeCounts) {
+            logsByType.put(row[0].toString(), (Long) row[1]);
+        }
+        stats.setLogsByType(logsByType);
+
+        // 按状态统计
+        List<Object[]> statusCounts = systemLogRepository.countByStatus();
+        java.util.Map<String, Long> logsByStatus = new java.util.HashMap<>();
+        for (Object[] row : statusCounts) {
+            logsByStatus.put(row[0].toString(), (Long) row[1]);
+        }
+        stats.setLogsByStatus(logsByStatus);
+
+        // SMTP 成功/失败统计
+        List<Object[]> smtpStatusCounts = systemLogRepository.countByTypeGroupByStatus(SystemLog.LogType.SMTP);
+        java.util.Map<String, Long> smtpStats = new java.util.HashMap<>();
+        for (Object[] row : smtpStatusCounts) {
+            smtpStats.put(row[0].toString(), (Long) row[1]);
+        }
+        stats.setSmtpLogsByStatus(smtpStats);
+
+        // POP3 成功/失败统计
+        List<Object[]> pop3StatusCounts = systemLogRepository.countByTypeGroupByStatus(SystemLog.LogType.POP3);
+        java.util.Map<String, Long> pop3Stats = new java.util.HashMap<>();
+        for (Object[] row : pop3StatusCounts) {
+            pop3Stats.put(row[0].toString(), (Long) row[1]);
+        }
+        stats.setPop3LogsByStatus(pop3Stats);
+
+        // 用户统计
+        stats.setTotalUsers(userRepository.count());
+
+        // 邮件统计（如果有的话）
+        // stats.setTotalEmails(emailRepository.count());
+
         return ResponseEntity.ok(new ApiResponse<>(true, stats, "服务器统计信息", null));
     }
 
     @GetMapping("/logs")
-    public ResponseEntity<ApiResponse<List<SystemLog>>> getLogs(HttpServletRequest httpRequest,
-            @RequestParam(defaultValue = "200") int limit) {
+    public ResponseEntity<ApiResponse<Page<SystemLog>>> getLogs(HttpServletRequest httpRequest,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "100") int size,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String status) {
         try {
             requireAdmin(httpRequest);
         } catch (Exception e) {
             return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
         }
 
-        int safeLimit = Math.max(1, Math.min(1000, limit));
-        var page = systemLogRepository.findAll(PageRequest.of(0, safeLimit, Sort.by(Sort.Direction.DESC, "id")));
-        return ResponseEntity.ok(new ApiResponse<>(true, page.getContent(), "获取日志成功", null));
+        int safeSize = Math.max(1, Math.min(500, size));
+        Pageable pageable = PageRequest.of(page, safeSize, Sort.by(Sort.Direction.DESC, "id"));
+
+        org.springframework.data.domain.Page<SystemLog> logsPage;
+
+        // 根据筛选条件查询
+        if (type != null && !type.isEmpty() && status != null && !status.isEmpty()) {
+            try {
+                SystemLog.LogType logType = SystemLog.LogType.valueOf(type.toUpperCase());
+                logsPage = systemLogRepository.findByTypeAndStatus(logType, status.toUpperCase(), pageable);
+            } catch (IllegalArgumentException e) {
+                logsPage = systemLogRepository.findAll(pageable);
+            }
+        } else if (type != null && !type.isEmpty()) {
+            try {
+                SystemLog.LogType logType = SystemLog.LogType.valueOf(type.toUpperCase());
+                logsPage = systemLogRepository.findByType(logType, pageable);
+            } catch (IllegalArgumentException e) {
+                logsPage = systemLogRepository.findAll(pageable);
+            }
+        } else if (status != null && !status.isEmpty()) {
+            logsPage = systemLogRepository.findByStatus(status.toUpperCase(), pageable);
+        } else {
+            logsPage = systemLogRepository.findAll(pageable);
+        }
+
+        Page<SystemLog> responsePage = new Page<>(
+                logsPage.getContent(),
+                logsPage.getTotalElements(),
+                logsPage.getTotalPages(),
+                logsPage.getSize(),
+                logsPage.getNumber(),
+                logsPage.isFirst(),
+                logsPage.isLast());
+
+        return ResponseEntity.ok(new ApiResponse<>(true, responsePage, "获取日志成功", null));
     }
 
     @DeleteMapping("/logs")
@@ -450,10 +558,76 @@ public class AdminController {
         return ResponseEntity.ok(new ApiResponse<>(true, "日志已清空", "清空成功", null));
     }
 
+    @DeleteMapping("/logs/before")
+    public ResponseEntity<ApiResponse<String>> clearLogsBefore(HttpServletRequest httpRequest,
+            @RequestParam int days) {
+        try {
+            requireAdmin(httpRequest);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
+
+        java.time.LocalDateTime before = java.time.LocalDateTime.now().minusDays(days);
+        systemLogRepository.deleteByCreatedAtBefore(before);
+        return ResponseEntity.ok(new ApiResponse<>(true, "已删除 " + days + " 天前的日志", "清理成功", null));
+    }
+
+    @GetMapping("/logs/stats")
+    public ResponseEntity<ApiResponse<LogStatsResponse>> getLogStats(HttpServletRequest httpRequest) {
+        try {
+            requireAdmin(httpRequest);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
+
+        LogStatsResponse stats = new LogStatsResponse();
+
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+
+        // 总数
+        stats.setTotal(systemLogRepository.count());
+
+        // 按类型统计
+        stats.setSmtpTotal(systemLogRepository.countByTypeSince(SystemLog.LogType.SMTP, java.time.LocalDateTime.MIN));
+        stats.setPop3Total(systemLogRepository.countByTypeSince(SystemLog.LogType.POP3, java.time.LocalDateTime.MIN));
+        stats.setSystemTotal(
+                systemLogRepository.countByTypeSince(SystemLog.LogType.SYSTEM, java.time.LocalDateTime.MIN));
+        stats.setAdminTotal(systemLogRepository.countByTypeSince(SystemLog.LogType.ADMIN, java.time.LocalDateTime.MIN));
+        stats.setOutboundTotal(systemLogRepository.countByTypeSince(SystemLog.LogType.OUTBOUND, java.time.LocalDateTime.MIN));
+        stats.setInboundTotal(systemLogRepository.countByTypeSince(SystemLog.LogType.INBOUND, java.time.LocalDateTime.MIN));
+
+        // 最近1小时
+        java.time.LocalDateTime last1h = now.minusHours(1);
+        stats.setSmtpLast1h(systemLogRepository.countByTypeSince(SystemLog.LogType.SMTP, last1h));
+        stats.setPop3Last1h(systemLogRepository.countByTypeSince(SystemLog.LogType.POP3, last1h));
+        stats.setOutboundLast1h(systemLogRepository.countByTypeSince(SystemLog.LogType.OUTBOUND, last1h));
+        stats.setInboundLast1h(systemLogRepository.countByTypeSince(SystemLog.LogType.INBOUND, last1h));
+
+        // 最近24小时
+        java.time.LocalDateTime last24h = now.minusHours(24);
+        stats.setSmtpLast24h(systemLogRepository.countByTypeSince(SystemLog.LogType.SMTP, last24h));
+        stats.setPop3Last24h(systemLogRepository.countByTypeSince(SystemLog.LogType.POP3, last24h));
+        stats.setOutboundLast24h(systemLogRepository.countByTypeSince(SystemLog.LogType.OUTBOUND, last24h));
+        stats.setInboundLast24h(systemLogRepository.countByTypeSince(SystemLog.LogType.INBOUND, last24h));
+
+        // 成功/失败统计
+        List<Object[]> statusCounts = systemLogRepository.countByStatus();
+        for (Object[] row : statusCounts) {
+            if ("SUCCESS".equals(row[0])) {
+                stats.setSuccessTotal((Long) row[1]);
+            } else if ("FAILURE".equals(row[0])) {
+                stats.setFailureTotal((Long) row[1]);
+            }
+        }
+
+        return ResponseEntity.ok(new ApiResponse<>(true, stats, "日志统计信息", null));
+    }
+
     // --- 邮件群发 ---
 
     @PostMapping("/emails/broadcast")
-    public ResponseEntity<ApiResponse<String>> broadcastEmail(HttpServletRequest httpRequest, @RequestBody BroadcastRequest request) {
+    public ResponseEntity<ApiResponse<String>> broadcastEmail(HttpServletRequest httpRequest,
+            @RequestBody BroadcastRequest request) {
         final Account operator;
         try {
             operator = requireAdmin(httpRequest);
@@ -476,8 +650,8 @@ public class AdminController {
 
             List<String> recipients;
             if (request.getGroupId() != null) {
-                org.springframework.data.domain.Page<com.example.mailbox.entity.GroupMember> page =
-                        groupMemberRepository.findByGroupId(request.getGroupId(), Pageable.unpaged());
+                org.springframework.data.domain.Page<com.example.mailbox.entity.GroupMember> page = groupMemberRepository
+                        .findByGroupId(request.getGroupId(), Pageable.unpaged());
                 List<Long> accountIds = page.getContent().stream()
                         .map(com.example.mailbox.entity.GroupMember::getAccountId)
                         .collect(Collectors.toList());
@@ -503,8 +677,10 @@ public class AdminController {
 
             Set<String> uniqueRecipients = new HashSet<>();
             for (String r : recipients) {
-                if (r == null) continue;
-                if (senderEmail != null && r.equalsIgnoreCase(senderEmail)) continue;
+                if (r == null)
+                    continue;
+                if (senderEmail != null && r.equalsIgnoreCase(senderEmail))
+                    continue;
                 uniqueRecipients.add(r);
             }
 
@@ -550,5 +726,42 @@ public class AdminController {
     public static class ResetUserPasswordRequest {
         private String newPassword;
         private String confirmPassword;
+    }
+
+    @Data
+    public static class ServerStatsResponse {
+        private boolean smtpRunning;
+        private boolean pop3Running;
+        private String smtpStats;
+        private String pop3Stats;
+        private long totalLogs;
+        private long logs24h;
+        private long logs1h;
+        private java.util.Map<String, Long> logsByType;
+        private java.util.Map<String, Long> logsByStatus;
+        private java.util.Map<String, Long> smtpLogsByStatus;
+        private java.util.Map<String, Long> pop3LogsByStatus;
+        private long totalUsers;
+    }
+
+    @Data
+    public static class LogStatsResponse {
+        private long total;
+        private long smtpTotal;
+        private long pop3Total;
+        private long systemTotal;
+        private long adminTotal;
+        private long outboundTotal;
+        private long inboundTotal;
+        private long smtpLast1h;
+        private long pop3Last1h;
+        private long outboundLast1h;
+        private long inboundLast1h;
+        private long smtpLast24h;
+        private long pop3Last24h;
+        private long outboundLast24h;
+        private long inboundLast24h;
+        private long successTotal;
+        private long failureTotal;
     }
 }

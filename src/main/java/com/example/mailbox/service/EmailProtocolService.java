@@ -12,49 +12,66 @@ import java.io.File;
  * 负责使用POP3和SMTP协议与邮件服务器通信
  */
 public interface EmailProtocolService {
-    
+
     /**
      * 使用POP3协议接收邮件
-     * @param email 用户邮箱地址
+     * 
+     * @param email    用户邮箱地址
      * @param password 邮箱密码
-     * @param host POP3服务器地址
-     * @param port POP3服务器端口
-     * @param ssl 是否使用SSL
+     * @param host     POP3服务器地址
+     * @param port     POP3服务器端口
+     * @param ssl      是否使用SSL
      * @return 接收到的邮件列表
      */
     List<Email> receiveEmails(String email, String password, String host, int port, boolean ssl);
-    
+
     /**
      * 使用SMTP协议发送邮件
+     * 
      * @param senderEmail 发件人邮箱
-     * @param password 发件人密码（或Token）
-     * @param recipients 收件人列表
-     * @param subject 邮件主题
-     * @param content 邮件内容
-     * @param host SMTP服务器地址
-     * @param port SMTP服务器端口
-     * @param ssl 是否使用SSL
+     * @param password    发件人密码（或Token）
+     * @param recipients  收件人列表
+     * @param subject     邮件主题
+     * @param content     邮件内容
+     * @param host        SMTP服务器地址
+     * @param port        SMTP服务器端口
+     * @param ssl         是否使用SSL
      * @return 发送结果
      */
-    boolean sendEmail(String senderEmail, String password, List<String> recipients, String subject, String content, String host, int port, boolean ssl);
+    boolean sendEmail(String senderEmail, String password, List<String> recipients, String subject, String content,
+            String host, int port, boolean ssl);
 
     // 新增：支持附件的发送方法
-    boolean sendEmail(String senderEmail, String password, List<String> recipients, String subject, String content, List<File> attachments, String host, int port, boolean ssl);
-    
+    boolean sendEmail(String senderEmail, String password, List<String> recipients, String subject, String content,
+            List<File> attachments, String host, int port, boolean ssl);
+
+    /**
+     * 使用SMTP发送邮件（From 与认证账号分离 + 可选STARTTLS）。
+     *
+     * @param fromEmail    发件人地址（邮件头From）
+     * @param authUser     SMTP认证用户名
+     * @param authPassword SMTP认证密码
+     */
+    boolean sendEmailWithAuth(String fromEmail, String authUser, String authPassword, List<String> recipients,
+            String subject, String content, List<File> attachments, String host, int port, boolean ssl,
+            boolean starttls);
+
     /**
      * 获取POP3服务器配置
+     * 
      * @param email 邮箱地址
      * @return 服务器配置
      */
     Pop3ServerConfig getPop3Config(String email);
-    
+
     /**
      * 获取SMTP服务器配置
+     * 
      * @param email 邮箱地址
      * @return 服务器配置
      */
     SmtpServerConfig getSmtpConfig(String email);
-    
+
     /**
      * POP3服务器配置
      */
@@ -62,22 +79,39 @@ public interface EmailProtocolService {
         private String host;
         private int port;
         private boolean ssl;
-        
+
         public Pop3ServerConfig(String host, int port, boolean ssl) {
             this.host = host;
             this.port = port;
             this.ssl = ssl;
         }
-        
+
         // Getters and Setters
-        public String getHost() { return host; }
-        public void setHost(String host) { this.host = host; }
-        public int getPort() { return port; }
-        public void setPort(int port) { this.port = port; }
-        public boolean isSsl() { return ssl; }
-        public void setSsl(boolean ssl) { this.ssl = ssl; }
+        public String getHost() {
+            return host;
+        }
+
+        public void setHost(String host) {
+            this.host = host;
+        }
+
+        public int getPort() {
+            return port;
+        }
+
+        public void setPort(int port) {
+            this.port = port;
+        }
+
+        public boolean isSsl() {
+            return ssl;
+        }
+
+        public void setSsl(boolean ssl) {
+            this.ssl = ssl;
+        }
     }
-    
+
     /**
      * SMTP服务器配置
      */
@@ -85,19 +119,36 @@ public interface EmailProtocolService {
         private String host;
         private int port;
         private boolean ssl;
-        
+
         public SmtpServerConfig(String host, int port, boolean ssl) {
             this.host = host;
             this.port = port;
             this.ssl = ssl;
         }
-        
+
         // Getters and Setters
-        public String getHost() { return host; }
-        public void setHost(String host) { this.host = host; }
-        public int getPort() { return port; }
-        public void setPort(int port) { this.port = port; }
-        public boolean isSsl() { return ssl; }
-        public void setSsl(boolean ssl) { this.ssl = ssl; }
+        public String getHost() {
+            return host;
+        }
+
+        public void setHost(String host) {
+            this.host = host;
+        }
+
+        public int getPort() {
+            return port;
+        }
+
+        public void setPort(int port) {
+            this.port = port;
+        }
+
+        public boolean isSsl() {
+            return ssl;
+        }
+
+        public void setSsl(boolean ssl) {
+            this.ssl = ssl;
+        }
     }
 }

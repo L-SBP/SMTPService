@@ -2,6 +2,7 @@ package com.example.mailbox;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * 邮箱应用主启动类
@@ -15,6 +16,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * 服务器通过@Configuration注解自动启动，无需在Application中手动启动
  */
 @SpringBootApplication
+@EnableScheduling
 public class MailboxApplication {
 
     public static void main(String[] args) {

@@ -2,6 +2,8 @@ package com.example.mailbox.service.Impl;
 
 import com.example.mailbox.dto.RegisterRequestDTO;
 import com.example.mailbox.entity.Account;
+import com.example.mailbox.entity.Blacklist;
+import com.example.mailbox.repository.BlacklistRepository;
 import com.example.mailbox.repository.UserRepository;
 import com.example.mailbox.service.AuthService;
 import com.example.mailbox.service.TokenService;
@@ -29,6 +31,9 @@ public class AuthServiceImpl implements AuthService {
 
     @Autowired
     private TokenService tokenService;
+
+    @Autowired
+    private BlacklistRepository blacklistRepository;
 
     // 关键：注入密码加密器
     @Autowired
@@ -80,21 +85,22 @@ public class AuthServiceImpl implements AuthService {
             throw new RuntimeException("账号已被禁用，请联系管理员");
         }
 
+        if (blacklistRepository.existsByTypeAndValue(Blacklist.Type.EMAIL, user.getEmail())) {
+            throw new RuntimeException("该邮箱已被加入黑名单，无法登录");
+        }
+
         // 【关键修改】登录必须使用 matches 方法比较明文和密文
         if (!passwordEncoder.matches(password, user.getPassword())) {
             throw new RuntimeException("用户名或密码错误");
         }
-        String token;
-        // 检查用户是否在redis中
-        if (tokenService.hasToken(user.getUsername())) {
-            token = tokenService.getTokenByUsername(user.getUsername());
+        String identity = user.getEmail();
+        String token = tokenService.getTokenByUsername(identity);
+        if (token != null && jwtUtil.isTokenValid(token) && tokenService.hasToken(token)) {
             log.info("用户已登录，使用缓存Token，用户ID：{}", user.getId());
         } else {
-            token = jwtUtil.generateToken(user.getUsername());
-
-            // 将Token存储到Redis
+            token = jwtUtil.generateToken(identity);
             long expiration = jwtUtil.getExpiration();
-            tokenService.storeToken(token, user.getUsername(), expiration);
+            tokenService.storeToken(token, identity, expiration);
         }
 
         // 构建用户信息

@@ -40,7 +40,13 @@ public class AuthController {
                     true, response, "登录成功", null
             ));
         } catch (Exception e) {
-            log.warn("用户登录失败，用户名/邮箱: {}, 原因: {}", request.getIdentifier(), e.getMessage());
+            String message = e.getMessage();
+            log.warn("用户登录失败，用户名/邮箱: {}, 原因: {}", request.getIdentifier(), message);
+            if (message != null && (message.contains("禁用") || message.contains("黑名单"))) {
+                return ResponseEntity.badRequest().body(new ApiResponse<>(
+                        false, null, message, null
+                ));
+            }
             return ResponseEntity.badRequest().body(new ApiResponse<>(
                     false, null, "用户名或密码错误", null
             ));

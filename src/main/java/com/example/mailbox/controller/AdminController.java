@@ -88,14 +88,22 @@ public class AdminController {
         } catch (Exception e) {
             return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
         }
+        if (request == null || request.getEmail() == null || request.getEmail().trim().isEmpty()
+                || request.getUsername() == null || request.getUsername().trim().isEmpty()
+                || request.getPassword() == null || request.getPassword().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "用户名、邮箱、密码不能为空", null));
+        }
         log.info("管理员创建用户，邮箱：{}", request.getEmail());
         if (userRepository.existsByEmail(request.getEmail())) {
             return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "邮箱已存在", null));
         }
+        if (userRepository.existsByUsername(request.getUsername())) {
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "用户名已存在", null));
+        }
 
         Account newUser = new Account();
-        newUser.setUsername(request.getUsername());
-        newUser.setEmail(request.getEmail());
+        newUser.setUsername(request.getUsername().trim());
+        newUser.setEmail(request.getEmail().trim());
         newUser.setPassword(passwordEncoder.encode(request.getPassword()));
         newUser.setEnabled(true);
         newUser.setIsAdmin(false);
@@ -110,10 +118,14 @@ public class AdminController {
     
     @DeleteMapping("/users/{id}")
     public ResponseEntity<ApiResponse<String>> deleteUser(HttpServletRequest httpRequest, @PathVariable Long id) {
+        Account operator;
         try {
-            requireAdmin(httpRequest);
+            operator = requireAdmin(httpRequest);
         } catch (Exception e) {
             return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
+        if (operator.getId() != null && operator.getId().equals(id)) {
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "不能删除自己", null));
         }
         log.info("管理员删除用户，ID：{}", id);
         if (!userRepository.existsById(id)) {
@@ -126,10 +138,14 @@ public class AdminController {
 
     @PutMapping("/users/{id}/role")
     public ResponseEntity<ApiResponse<String>> updateUserRole(HttpServletRequest httpRequest, @PathVariable Long id, @RequestParam Boolean isAdmin) {
+        Account operator;
         try {
-            requireAdmin(httpRequest);
+            operator = requireAdmin(httpRequest);
         } catch (Exception e) {
             return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
+        if (operator.getId() != null && operator.getId().equals(id) && Boolean.FALSE.equals(isAdmin)) {
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "不能取消自己的管理员权限", null));
         }
         log.info("管理员修改用户权限，用户ID：{}，是否管理员：{}", id, isAdmin);
         return userRepository.findById(id).map(user -> {
@@ -181,6 +197,34 @@ public class AdminController {
             log.info("用户状态修改成功，用户ID：{}，操作：{}", id, status);
             return ResponseEntity.ok(new ApiResponse<>(true, "用户已" + status, "操作成功", null));
         }).orElse(ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "用户不存在", null)));
+    }
+
+    @PutMapping("/users/{id}/password")
+    public ResponseEntity<ApiResponse<String>> resetUserPassword(HttpServletRequest httpRequest, @PathVariable Long id, @RequestBody ResetUserPasswordRequest request) {
+        try {
+            requireAdmin(httpRequest);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(new ApiResponse<>(false, null, e.getMessage(), null));
+        }
+        if (request == null || request.getNewPassword() == null || request.getNewPassword().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "新密码不能为空", null));
+        }
+        if (request.getConfirmPassword() != null && !request.getNewPassword().equals(request.getConfirmPassword())) {
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "新密码与确认密码不一致", null));
+        }
+        if (request.getNewPassword().length() < 6) {
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "新密码长度至少为6位", null));
+        }
+        try {
+            return userRepository.findById(id).map(user -> {
+                user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+                userRepository.save(user);
+                return ResponseEntity.ok(new ApiResponse<>(true, "密码已更新", "操作成功", null));
+            }).orElse(ResponseEntity.badRequest().body(new ApiResponse<>(false, null, "用户不存在", null)));
+        } catch (Exception e) {
+            log.error("管理员重置用户密码失败，用户ID：{}", id, e);
+            return ResponseEntity.status(500).body(new ApiResponse<>(false, null, "重置密码失败: " + e.getMessage(), null));
+        }
     }
 
     // --- 黑名单管理 ---
@@ -500,5 +544,11 @@ public class AdminController {
         private String username;
         private String email;
         private String password;
+    }
+
+    @Data
+    public static class ResetUserPasswordRequest {
+        private String newPassword;
+        private String confirmPassword;
     }
 }

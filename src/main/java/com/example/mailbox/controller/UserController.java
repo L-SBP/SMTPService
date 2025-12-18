@@ -111,8 +111,7 @@ public class UserController {
                 ));
             }
 
-            // 更新用户信息 (允许修改用户名和签名)
-            if (updatedUser.getUsername() != null) currentUser.setUsername(updatedUser.getUsername());
+            // 更新用户信息 (仅允许修改签名)
             if (updatedUser.getSignature() != null) currentUser.setSignature(updatedUser.getSignature());
             // 这里的 email 和 isAdmin 通常不允许普通接口随意修改，视业务而定
 

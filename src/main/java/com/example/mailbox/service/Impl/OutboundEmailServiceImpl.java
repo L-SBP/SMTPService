@@ -311,9 +311,9 @@ public class OutboundEmailServiceImpl implements OutboundEmailService {
       log.info("外发邮件成功: messageId={}", messageId);
 
       // 记录成功日志
-      logOutbound(senderEmail, "SEND_EXTERNAL", 
-          String.format("外发邮件成功: to=%s, subject=%s, via=%s:%d", 
-              recipients, subject, outboundSmtpProperties.getHost(), outboundSmtpProperties.getPort()), 
+      logOutbound(senderEmail, "SEND_EXTERNAL",
+          String.format("外发邮件成功: to=%s, subject=%s, via=%s:%d",
+              recipients, subject, outboundSmtpProperties.getHost(), outboundSmtpProperties.getPort()),
           true);
 
       // 保存到已发送文件夹
@@ -329,8 +329,8 @@ public class OutboundEmailServiceImpl implements OutboundEmailService {
     } catch (SendFailedException e) {
       log.error("部分邮件发送失败: {}", e.getMessage());
       // 记录失败日志
-      logOutbound(senderEmail, "SEND_EXTERNAL", 
-          String.format("外发邮件部分失败: to=%s, subject=%s, error=%s", recipients, subject, e.getMessage()), 
+      logOutbound(senderEmail, "SEND_EXTERNAL",
+          String.format("外发邮件部分失败: to=%s, subject=%s, error=%s", recipients, subject, e.getMessage()),
           false);
       Address[] invalid = e.getInvalidAddresses();
       if (invalid != null) {
@@ -344,22 +344,22 @@ public class OutboundEmailServiceImpl implements OutboundEmailService {
 
     } catch (AuthenticationFailedException e) {
       log.error("SMTP认证失败: {}", e.getMessage());
-      logOutbound(senderEmail, "SEND_EXTERNAL", 
-          String.format("SMTP认证失败: to=%s, subject=%s, error=%s", recipients, subject, e.getMessage()), 
+      logOutbound(senderEmail, "SEND_EXTERNAL",
+          String.format("SMTP认证失败: to=%s, subject=%s, error=%s", recipients, subject, e.getMessage()),
           false);
       return new SendResult(false, "SMTP认证失败，请检查用户名和密码（授权码）");
 
     } catch (MessagingException e) {
       log.error("邮件发送失败: {}", e.getMessage(), e);
-      logOutbound(senderEmail, "SEND_EXTERNAL", 
-          String.format("邮件发送失败: to=%s, subject=%s, error=%s", recipients, subject, e.getMessage()), 
+      logOutbound(senderEmail, "SEND_EXTERNAL",
+          String.format("邮件发送失败: to=%s, subject=%s, error=%s", recipients, subject, e.getMessage()),
           false);
       return new SendResult(false, "邮件发送失败: " + e.getMessage());
 
     } catch (Exception e) {
       log.error("外发邮件异常: {}", e.getMessage(), e);
-      logOutbound(senderEmail, "SEND_EXTERNAL", 
-          String.format("外发邮件异常: to=%s, subject=%s, error=%s", recipients, subject, e.getMessage()), 
+      logOutbound(senderEmail, "SEND_EXTERNAL",
+          String.format("外发邮件异常: to=%s, subject=%s, error=%s", recipients, subject, e.getMessage()),
           false);
       return new SendResult(false, "邮件发送异常: " + e.getMessage());
     }

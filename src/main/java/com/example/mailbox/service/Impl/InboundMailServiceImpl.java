@@ -253,7 +253,7 @@ public class InboundMailServiceImpl implements InboundMailService {
       // 记录拉取成功日志
       if (fetchedCount > 0) {
         logInbound(inboundProperties.getHost(), "FETCH_EMAILS",
-            String.format("从中继邮箱拉取邮件完成: 处理 %d 封, 来源=%s:%d", 
+            String.format("从中继邮箱拉取邮件完成: 处理 %d 封, 来源=%s:%d",
                 fetchedCount, inboundProperties.getHost(), inboundProperties.getPort()),
             true);
       }
@@ -263,7 +263,7 @@ public class InboundMailServiceImpl implements InboundMailService {
       lastError = e.getMessage();
       // 记录拉取失败日志
       logInbound(inboundProperties.getHost(), "FETCH_EMAILS",
-          String.format("从中继邮箱拉取邮件失败: error=%s, 来源=%s:%d", 
+          String.format("从中继邮箱拉取邮件失败: error=%s, 来源=%s:%d",
               e.getMessage(), inboundProperties.getHost(), inboundProperties.getPort()),
           false);
     } finally {
@@ -350,7 +350,7 @@ public class InboundMailServiceImpl implements InboundMailService {
       }
 
       log.info("邮件已分发给用户 {}: 来自 {}, 主题: {}", targetUser.getEmail(), sender, subject);
-      
+
       // 记录每封邮件分发日志
       logInbound(sender, "RECEIVE_EMAIL",
           String.format("收到外部邮件: from=%s, to=%s, subject=%s", sender, targetUser.getEmail(), subject),

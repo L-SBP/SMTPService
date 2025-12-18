@@ -593,8 +593,10 @@ public class AdminController {
         stats.setSystemTotal(
                 systemLogRepository.countByTypeSince(SystemLog.LogType.SYSTEM, java.time.LocalDateTime.MIN));
         stats.setAdminTotal(systemLogRepository.countByTypeSince(SystemLog.LogType.ADMIN, java.time.LocalDateTime.MIN));
-        stats.setOutboundTotal(systemLogRepository.countByTypeSince(SystemLog.LogType.OUTBOUND, java.time.LocalDateTime.MIN));
-        stats.setInboundTotal(systemLogRepository.countByTypeSince(SystemLog.LogType.INBOUND, java.time.LocalDateTime.MIN));
+        stats.setOutboundTotal(
+                systemLogRepository.countByTypeSince(SystemLog.LogType.OUTBOUND, java.time.LocalDateTime.MIN));
+        stats.setInboundTotal(
+                systemLogRepository.countByTypeSince(SystemLog.LogType.INBOUND, java.time.LocalDateTime.MIN));
 
         // 最近1小时
         java.time.LocalDateTime last1h = now.minusHours(1);

@@ -534,33 +534,39 @@ public class EnhancedSmtpServer {
         }
         
         private void authenticate(String username, String jwt) {
-            // 校验JWT
-            String tokenUsername = jwtUtil.extractUsername(jwt);
-            if (tokenUsername == null || !jwtUtil.validateToken(jwt, tokenUsername)) {
+            try {
+                // 校验JWT
+                String tokenUsername = jwtUtil.extractUsername(jwt);
+                if (tokenUsername == null || !jwtUtil.validateToken(jwt, tokenUsername)) {
+                    writer.println("535 Authentication credentials invalid");
+                    saveLog(SystemLog.LogType.SMTP, clientIp, "AUTH", "Invalid JWT", "FAILURE");
+                    return;
+                }
+                
+                // 检查用户名是否匹配
+                if (!tokenUsername.equals(username)) {
+                    writer.println("535 Authentication credentials invalid");
+                    saveLog(SystemLog.LogType.SMTP, clientIp, "AUTH", "Username mismatch", "FAILURE");
+                    return;
+                }
+                
+                // 检查Token是否在Redis中存在
+                if (!tokenService.hasToken(jwt)) {
+                    writer.println("535 Authentication credentials invalid");
+                    saveLog(SystemLog.LogType.SMTP, clientIp, "AUTH", "Token not found in Redis", "FAILURE");
+                    return;
+                }
+                
+                authenticated = true;
+                authenticatedUser = username;
+                state = SmtpState.TRANSACTION;
+                writer.println("235 Authentication successful");
+                saveLog(SystemLog.LogType.SMTP, username, "AUTH", "JWT authentication successful", "SUCCESS");
+            } catch (Exception e) {
+                log.warn("SMTP authentication failed: {}", e.getMessage());
                 writer.println("535 Authentication credentials invalid");
-                saveLog(SystemLog.LogType.SMTP, clientIp, "AUTH", "Invalid JWT", "FAILURE");
-                return;
+                saveLog(SystemLog.LogType.SMTP, clientIp, "AUTH", "Authentication exception: " + e.getMessage(), "FAILURE");
             }
-            
-            // 检查用户名是否匹配
-            if (!tokenUsername.equals(username)) {
-                writer.println("535 Authentication credentials invalid");
-                saveLog(SystemLog.LogType.SMTP, clientIp, "AUTH", "Username mismatch", "FAILURE");
-                return;
-            }
-            
-            // 检查Token是否在Redis中存在
-            if (!tokenService.hasToken(jwt)) {
-                writer.println("535 Authentication credentials invalid");
-                saveLog(SystemLog.LogType.SMTP, clientIp, "AUTH", "Token not found in Redis", "FAILURE");
-                return;
-            }
-            
-            authenticated = true;
-            authenticatedUser = username;
-            state = SmtpState.TRANSACTION;
-            writer.println("235 Authentication successful");
-            saveLog(SystemLog.LogType.SMTP, username, "AUTH", "JWT authentication successful", "SUCCESS");
         }
 
         private void handleMail(String line) throws IOException {
